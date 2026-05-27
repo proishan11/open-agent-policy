@@ -1,0 +1,17 @@
+{
+  "request_id": "req-demo-delete-01",
+  "timestamp": "2026-05-27T12:05:00Z",
+  "subject": {
+    "type": "agent",
+    "agent_id": "agent://finance/invoice-reconciler",
+    "agent_version": "1.2.0"
+  },
+  "action": {
+    "name": "erp.invoice.delete",
+    "risk": "critical"
+  },
+  "resource": {
+    "type": "erp.invoice",
+    "id": "INV-2026-0042"
+  }
+}

@@ -1,0 +1,29 @@
+apiVersion: oap.dev/v1alpha1
+kind: Agent
+metadata:
+  name: invoice-reconciler
+  namespace: finance
+spec:
+  owner: group:finance-platform
+  description: >
+    Automated invoice reconciliation agent. Reads invoices from the ERP,
+    matches them against purchase orders, and flags discrepancies.
+  type: workflow_agent
+  version: "1.2.0"
+  lifecycle: production
+  riskTier: medium
+  publisher: finance-platform-team
+  framework: langchain
+  capabilities:
+    - erp.invoice.read
+    - erp.invoice.list
+    - erp.invoice.update_status
+  tools:
+    - name: query_invoices
+      action: erp.invoice.read
+      resource:
+        type: erp.invoice
+    - name: update_invoice_status
+      action: erp.invoice.update_status
+      resource:
+        type: erp.invoice
