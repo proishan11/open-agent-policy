@@ -32,29 +32,36 @@ User → Agent (Python + @protect decorator)
          └── Mock APIs (ticketing + CRM + email)
 ```
 
-## Quick Start (Offline — No Server Required)
+## Real LangChain Agent (with LLM)
+
+The **real agent** uses a LangChain ReAct agent with Ollama (local LLM). The LLM decides
+which tools to call — it is NOT scripted. OAP intercepts every tool call.
 
 ```bash
-# From repo root, with venv activated
-python examples/enterprise-support-agent/agent.py
-```
+# 1. Start Ollama + pull model
+brew install ollama && ollama serve
+ollama pull llama3.2
 
-This runs the demo with mock OAP decisions, demonstrating all 7 scenarios.
-
-## Full Stack (With OAP Server + Mock APIs)
-
-```bash
-# Terminal 1: Start mock APIs
+# 2. Start mock APIs
 pip install fastapi uvicorn
-python -m uvicorn examples.enterprise-support-agent.mock_apis.server:app --port 9100
+uvicorn examples.enterprise-support-agent.mock_apis.server:app --port 9100
 
-# Terminal 2: Build and start OAP server
-make build
-./bin/oap-server --data examples/enterprise-support-agent/ --dev
+# 3. Run the real agent
+python examples/enterprise-support-agent/real_agent.py
+```
 
-# Terminal 3: Run the agent
+5 scenarios run automatically — the LLM autonomously lists tickets, investigates,
+escalates, attempts deletion (blocked by policy), and updates tickets.
+
+Override LLM: `OAP_MODEL=mistral python examples/enterprise-support-agent/real_agent.py`
+
+## Offline Demo (No LLM Required)
+
+```bash
 python examples/enterprise-support-agent/agent.py
 ```
+
+This runs with mock OAP decisions — no Ollama, no server needed.
 
 ## Key Concepts Shown
 
@@ -70,7 +77,8 @@ python examples/enterprise-support-agent/agent.py
 
 ```
 examples/enterprise-support-agent/
-├── agent.py           Main agent script (offline + live modes)
+├── real_agent.py      Real LangChain ReAct agent (Ollama LLM + OAP)
+├── agent.py           Offline demo (mock OAP, no LLM required)
 ├── tools.py           Tool implementations wrapping mock APIs
 ├── oap.yaml           Agent manifest
 ├── policies/

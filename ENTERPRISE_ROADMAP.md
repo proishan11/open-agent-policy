@@ -27,28 +27,81 @@ Milestones 1–5 established the core engine, SDK, proxy, gateway, and foundatio
 
 ### 6.1 Real IDP Integrations
 
+**Tier 1 — Market-dominant (day-one support):**
+
 | Provider | Protocol | Implementation |
 |---|---|---|
-| **Keycloak** | OIDC | JWKS discovery, token introspection, realm mapping |
-| **Okta** | OIDC | JWKS from `/.well-known/jwks.json`, org-level audience |
-| **Azure AD (Entra ID)** | OIDC + SAML | Multi-tenant, v2.0 endpoints, group claims |
-| **Google Workspace** | OIDC | Google-specific `hd` (hosted domain) claim |
-| **Auth0** | OIDC | Custom domain support, API audience |
+| **Okta** | OIDC | JWKS from `/.well-known/jwks.json`, org-level audience, custom auth servers |
+| **Azure AD / Entra ID** | OIDC + SAML | Multi-tenant, v2.0 endpoints, app roles, group claims, conditional access |
+| **Google Workspace** | OIDC | Hosted domain (`hd`) claim, service account impersonation |
+| **AWS Cognito** | OIDC | User pool JWKS, identity pool federation, custom scopes |
+| **Keycloak** | OIDC | Realm-aware, client roles, realm roles, fine-grained authorization |
+| **Auth0** | OIDC | Custom domains, API audience, organizations (multi-tenant), actions/hooks |
+
+**Tier 2 — Enterprise & gov (near-term):**
+
+| Provider | Protocol | Implementation |
+|---|---|---|
+| **PingIdentity / PingFederate** | OIDC + SAML | Connection-based config, access token management profiles |
+| **OneLogin** | OIDC + SAML | App connectors, event hooks, user provisioning via SCIM |
+| **ForgeRock (PingOne Advanced Identity Cloud)** | OIDC | AM trees/journeys, token exchange, session management |
+| **CyberArk Identity** | OIDC + SAML | Privileged access context, MFA policy integration |
+| **Microsoft ADFS** | SAML + WS-Fed | On-premise AD integration, claims-based auth, legacy enterprise support |
+| **IBM Security Verify** | OIDC + SAML | Risk-based access, adaptive MFA context |
+| **Duo / Cisco Identity** | OIDC | MFA-aware tokens, device trust context |
+| **JumpCloud** | OIDC + SAML | Cloud directory, device identity, conditional policies |
+
+**Tier 3 — Cloud-native & specialized (extended support):**
+
+| Provider | Protocol | Implementation |
+|---|---|---|
+| **Salesforce Identity** | OIDC | Connected apps, named credentials, Salesforce-to-Salesforce |
+| **WSO2 Identity Server** | OIDC + SAML | Open-source, custom claim dialects, multi-factor context |
+| **Zitadel** | OIDC | Open-source, project-based scopes, actions (serverless hooks) |
+| **Authentik** | OIDC + SAML | Open-source, policy engine integration, LDAP bridge |
+| **Descope** | OIDC | Passwordless-first, flow builder, custom JWT claims |
+| **FusionAuth** | OIDC | Self-hosted or cloud, application-scoped tokens, webhook events |
+| **Ory (Hydra + Kratos)** | OIDC | Open-source, cloud-native, consent management |
+| **SPIFFE / SPIRE** | X.509 SVID | Workload identity (not user identity), mesh-native agent verification |
+| **Kubernetes** | TokenReview | ServiceAccount tokens, bound tokens, projected volumes |
+| **Cloud Workload Identity** | OIDC federation | GCP Workload Identity, AWS IAM Roles for Service Accounts, Azure Managed Identity |
 
 **Implementation deliverables:**
 - `engine/identity/oidc/` — Production OIDC verifier with:
-  - JWKS auto-discovery and rotation (background refresh)
-  - RS256/RS384/ES256 signature verification (not just HMAC)
+  - JWKS auto-discovery and rotation (background refresh, 24h TTL, force-refresh on unknown kid)
+  - RS256/RS384/RS512/ES256/ES384/PS256 signature verification
   - Issuer discovery via `.well-known/openid-configuration`
-  - Token introspection endpoint support (opaque tokens)
-  - Claim mapping configuration (per-provider)
+  - Token introspection endpoint support (opaque tokens, RFC 7662)
+  - Claim mapping configuration (per-provider, custom claim paths)
+  - Audience validation (string and array formats)
+  - `nonce` validation for CSRF protection
+  - Clock skew tolerance (configurable, default 60s)
+- `engine/identity/saml/` — SAML 2.0 assertion validation:
+  - XML signature verification (enveloped, detached)
+  - Assertion decryption (AES-256-CBC, AES-256-GCM)
+  - Audience restriction validation
+  - Conditions/time validation
+  - Attribute mapping to OAP actor identity
 - `engine/identity/providers/` — Provider-specific adapters:
-  - `keycloak.go` — Realm-aware, client role extraction
-  - `okta.go` — Org URL, custom authorization server support
-  - `azuread.go` — Multi-tenant, v2.0 token format, app role claims
-  - `google.go` — Hosted domain (`hd`) validation
-- `engine/identity/saml/` — SAML 2.0 assertion validation (for enterprises that require it)
-- Integration tests against each provider (using test containers or mock JWKS servers)
+  - `okta.go` — Org URL, custom authorization server, inline hooks
+  - `azuread.go` — Multi-tenant, v2.0 token format, app roles, optional claims config
+  - `google.go` — Hosted domain (`hd`) validation, service account JWT bearer
+  - `cognito.go` — User pool JWKS, identity pool token exchange
+  - `keycloak.go` — Realm-aware, client role extraction, offline tokens
+  - `auth0.go` — Custom domain, organization claims, API audience
+  - `ping.go` — Connection profiles, PingFederate OIDC/SAML bridge
+  - `onelogin.go` — App connector configuration, SCIM sync
+  - `forgerock.go` — AM tree config, token exchange profiles
+  - `cyberark.go` — Privileged access context extraction
+  - `adfs.go` — WS-Federation + SAML claim rules mapping
+  - `jumpcloud.go` — Cloud directory groups, device trust
+  - `generic_oidc.go` — Configurable adapter for any OIDC-compliant provider
+  - `generic_saml.go` — Configurable adapter for any SAML 2.0 provider
+- `engine/identity/spiffe/` — SPIFFE SVID verification for workload identity
+- `engine/identity/k8s/` — Production Kubernetes TokenReview API integration
+- `engine/identity/cloud/` — Cloud workload identity (GCP, AWS, Azure)
+- Integration tests against each Tier 1 provider (using test containers or mock JWKS servers)
+- Configuration schema per provider (JSON Schema for validation)
 
 ### 6.2 Database-Backed Storage
 
