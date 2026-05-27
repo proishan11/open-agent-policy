@@ -1,7 +1,29 @@
-# Byte-compiled / optimized / DLL files
+# ── Go ──────────────────────────────────────────
+bin/
+*.exe
+*.exe~
+*.dll
+*.dylib
+*.test
+*.out
+vendor/
+go.work
+go.work.sum
+coverage.out
+coverage.html
+
+# ── Python ──────────────────────────────────────
 __pycache__/
 *.py[codz]
 *$py.class
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
 
 # C extensions
 *.so
@@ -216,3 +238,16 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ── IDE ─────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ── OAP specific ────────────────────────────────
+*.db
+*.sqlite
+audit.jsonl
