@@ -18,6 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenAPI spec for oap-server HTTP API (14 paths, 19 schemas, 22 operations)
 - 10 conformance test cases covering all core principles
 - Demo validation script (33/33 passing)
+- Go policy evaluation engine (`engine/evaluator`) — deny-overrides-allow, condition
+  checking, constraint merging (strictest wins), delegation scope verification
+- In-memory registry store (`engine/registry`) — file-backed, recursive YAML/JSON loading
+- Audit sinks (`engine/audit`) — JSONL, stdout, in-memory (for testing)
+- HTTP server (`server/api`) — authorize, simulate, agent/policy CRUD, health
+- CLI tool (`cli/cmd/oapctl`):
+  - `oapctl dev` — start local dev server with data from files
+  - `oapctl simulate` / `oapctl explain` — local policy evaluation and tracing
+  - `oapctl test --conformance` — run conformance suite (10/10 passing)
+  - `oapctl agent register/list` / `oapctl policy apply/list` — remote management
+- Finance invoice agent example (agent manifest, policy, request samples)
+- Component READMEs for engine, server, cli (per §8 documentation standards)
+- doc.go for every Go package
 - Project infrastructure:
   - Pre-commit hooks (conventional commits, gofmt, ruff, gitleaks)
   - GitHub Actions CI (lint, test, security scans)

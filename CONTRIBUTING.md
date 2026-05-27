@@ -6,7 +6,7 @@ Thank you for your interest in contributing to OAP. This document explains how t
 
 ```bash
 # Clone the repo
-git clone https://github.com/open-agent-policy/open-agent-policy.git
+git clone https://github.com/proishan11/open-agent-policy.git
 cd open-agent-policy
 
 # Install development tools

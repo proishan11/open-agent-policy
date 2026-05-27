@@ -2,7 +2,7 @@
 
 > Zero-trust access control for AI agents.
 
-[![CI](https://github.com/open-agent-policy/open-agent-policy/actions/workflows/ci.yml/badge.svg)](https://github.com/open-agent-policy/open-agent-policy/actions/workflows/ci.yml)
+[![CI](https://github.com/proishan11/open-agent-policy/actions/workflows/ci.yml/badge.svg)](https://github.com/proishan11/open-agent-policy/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-blue.svg)](https://conventionalcommits.org)
 

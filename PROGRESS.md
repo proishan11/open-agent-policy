@@ -65,7 +65,42 @@
 ---
 
 ## Milestone 2: Core Engine + CLI
-_Not started_
+
+### Engine Library (engine/)
+- [x] engine/model/ — Core domain types (AuthorizationRequest, Decision, Agent, Policy, Resource, Tool, Grant, AuditEvent)
+- [x] engine/registry/ — In-memory store with recursive file loading (Agent, Resource, Tool, AgentPolicy)
+- [x] engine/evaluator/ — Policy evaluation engine (deny-overrides-allow, condition checking, constraint merging, delegation scope)
+- [x] engine/audit/ — Audit sinks (JSONL, stdout, memory)
+- [x] engine/evaluator: 10/10 conformance tests passing
+- [x] engine/evaluator: 4 additional unit tests passing
+
+### HTTP Server (server/)
+- [x] server/api/ — HTTP handlers for authorize, simulate, agents, policies, audit, health
+- [x] server/cmd/oap-server/ — Binary entry point with flags (--addr, --data, --audit-file, --dev)
+- [x] server/api: 3 integration tests passing (health, authorize flow, simulate)
+
+### CLI (cli/)
+- [x] oapctl dev — Start local dev server with data from files
+- [x] oapctl agent register/list — Agent management (remote mode)
+- [x] oapctl policy apply/list — Policy management (remote mode)
+- [x] oapctl simulate — Simulate authorization decisions (local mode)
+- [x] oapctl explain — Step-by-step evaluation trace (local mode)
+- [x] oapctl test --conformance — Run conformance test suite (10/10 passing)
+
+### Examples
+- [x] examples/finance-invoice-agent/oap.yaml — Agent manifest
+- [x] examples/finance-invoice-agent/policies/ — Read-only policy with constraints
+- [x] examples/finance-invoice-agent/requests/ — Read and delete request samples
+
+### Documentation
+- [x] engine/README.md — Purpose, architecture, key interfaces, data flow, testing
+- [x] server/README.md — Purpose, endpoints, configuration, data flow, testing
+- [x] cli/README.md — Purpose, commands, data flow, testing
+- [x] doc.go for every package (model, registry, evaluator, audit, api)
+
+### Demo + Blog
+- [x] Demo 02 script (conformance + simulate + explain + tests)
+- [ ] Blog post 03 draft: "Building the Engine"
 
 ## Milestone 3: Python SDK + LangChain
 _Not started_

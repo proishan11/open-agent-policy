@@ -67,6 +67,10 @@ request:
     id: INV-001
   context:
     delegation_id: del_test08
+    # The enforcement point resolves the delegation and injects the allowed
+    # actions into delegation_scope before calling the evaluator.
+    delegation_scope:
+      - erp.invoice.read
 
 expected:
   decision: deny
