@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oap.dev/spec/v1alpha1/authorization-request.schema.json",
+  "title": "OAP Authorization Request",
+  "description": "Canonical shape for every agent authorization request. Every enforcement point (SDK, gateway, proxy, middleware) produces this same shape.",
+  "type": "object",
+  "required": ["request_id", "timestamp", "subject", "action"],
+  "additionalProperties": false,
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "description": "Unique identifier for this authorization request.",
+      "pattern": "^req_[a-zA-Z0-9]+$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the request."
+    },
+    "subject": {
+      "type": "object",
+      "description": "The agent making the request.",
+      "required": ["type", "agent_id"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "agent",
+          "description": "Always 'agent' for OAP authorization requests."
+        },
+        "agent_id": {
+          "type": "string",
+          "description": "Registered agent identifier. Format: agent://<namespace>/<name>",
+          "pattern": "^agent://[a-z0-9-]+/[a-z0-9-]+(/v[0-9]+)?$"
+        },
+        "agent_version": {
+          "type": "string",
+          "description": "Semantic version of the agent."
+        },
+        "instance_id": {
+          "type": "string",
+          "description": "Identifier for this specific running instance of the agent."
+        },
+        "trust_level": {
+          "type": "string",
+          "enum": ["unverified", "verified", "attested"],
+          "description": "How strongly the agent's identity has been verified."
+        }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "description": "The principal on whose behalf the agent is acting. May be absent for autonomous agent actions.",
+      "required": ["type", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["user", "service", "agent"],
+          "description": "Type of the actor."
+        },
+        "id": {
+          "type": "string",
+          "description": "Actor identifier. Format depends on type: user:<email>, service:<name>, agent://<ns>/<name>"
+        },
+        "groups": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Groups the actor belongs to (from IdP claims)."
+        },
+        "roles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Roles assigned to the actor."
+        },
+        "auth_strength": {
+          "type": "string",
+          "enum": ["none", "password", "mfa", "phishing_resistant_mfa"],
+          "description": "Strength of the actor's authentication."
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "description": "The action the agent wants to perform.",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Dot-namespaced action name. Example: erp.invoice.read",
+          "pattern": "^[a-z0-9]+\\.[a-z0-9_.]+$"
+        },
+        "risk": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"],
+          "description": "Risk level of this action."
+        }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "description": "The resource being accessed.",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Dot-namespaced resource type. Example: erp.invoice",
+          "pattern": "^[a-z0-9]+\\.[a-z0-9_.]+$"
+        },
+        "id": {
+          "type": "string",
+          "description": "Opaque resource identifier meaningful to the backend."
+        },
+        "owner": {
+          "type": "string",
+          "description": "Owner of the resource. Format: user:<id> or group:<name>"
+        },
+        "classification": {
+          "type": "string",
+          "enum": ["public", "internal", "confidential", "restricted"],
+          "description": "Data classification of the resource."
+        },
+        "environment": {
+          "type": "string",
+          "enum": ["development", "staging", "production"],
+          "description": "Environment where the resource lives."
+        },
+        "attributes": {
+          "type": "object",
+          "description": "Additional key-value attributes for policy matching.",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "description": "The tool being invoked (if applicable).",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Tool name. Example: erp.get_invoice"
+        },
+        "protocol": {
+          "type": "string",
+          "enum": ["mcp", "http", "function", "shell", "sdk"],
+          "description": "Protocol used to invoke the tool."
+        },
+        "server": {
+          "type": "string",
+          "description": "Tool server URI (for MCP tools)."
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "description": "Additional context for policy evaluation.",
+      "additionalProperties": true,
+      "properties": {
+        "purpose": {
+          "type": "string",
+          "description": "Declared purpose of the action."
+        },
+        "run_id": {
+          "type": "string",
+          "description": "Identifier for the agent's current run or session."
+        },
+        "environment": {
+          "type": "string",
+          "enum": ["development", "staging", "production"],
+          "description": "Environment context."
+        },
+        "delegation_id": {
+          "type": "string",
+          "description": "Delegation identifier if agent is acting under a delegation."
+        },
+        "approval_id": {
+          "type": "string",
+          "description": "Approval identifier if retrying after approval."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oap.dev/spec/v1alpha1/authorization-decision.schema.json",
+  "title": "OAP Authorization Decision",
+  "description": "Structured decision returned by the OAP PDP for every authorization request.",
+  "type": "object",
+  "required": ["decision_id", "decision", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "decision_id": {
+      "type": "string",
+      "description": "Unique identifier for this decision.",
+      "pattern": "^dec_[a-zA-Z0-9]+$"
+    },
+    "request_id": {
+      "type": "string",
+      "description": "The request_id this decision responds to.",
+      "pattern": "^req_[a-zA-Z0-9]+$"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "allow",
+        "allow_with_constraints",
+        "deny",
+        "require_approval",
+        "require_delegation",
+        "require_step_up_auth"
+      ],
+      "description": "The authorization decision."
+    },
+    "policy_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Policy identifiers that contributed to this decision."
+    },
+    "grant": {
+      "type": "object",
+      "description": "Short-lived grant issued when the action is allowed.",
+      "required": ["grant_id", "expires_in_seconds", "scope"],
+      "additionalProperties": false,
+      "properties": {
+        "grant_id": {
+          "type": "string",
+          "description": "Unique grant identifier.",
+          "pattern": "^grant_[a-zA-Z0-9]+$"
+        },
+        "token": {
+          "type": "string",
+          "description": "Signed JWT grant token."
+        },
+        "expires_in_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Grant lifetime in seconds."
+        },
+        "audience": {
+          "type": "string",
+          "description": "Intended audience for the grant (target service)."
+        },
+        "scope": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Actions permitted by the grant."
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "description": "Constraints applied to the allowed action.",
+      "additionalProperties": true,
+      "properties": {
+        "max_records": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of records the agent may access."
+        },
+        "redact_fields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fields that must be redacted from responses."
+        },
+        "readonly": {
+          "type": "boolean",
+          "description": "If true, only read operations are permitted."
+        },
+        "time_window_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Time window within which the action must complete."
+        }
+      }
+    },
+    "obligations": {
+      "type": "object",
+      "description": "Obligations that must be fulfilled alongside the action.",
+      "additionalProperties": true,
+      "properties": {
+        "audit": {
+          "type": "boolean",
+          "description": "Whether an audit event must be emitted."
+        },
+        "log_full_request": {
+          "type": "boolean",
+          "description": "Whether the full request body should be logged."
+        },
+        "notify": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Parties to notify about this action."
+        }
+      }
+    },
+    "reason": {
+      "type": "string",
+      "description": "Human-readable explanation of the decision. This is mandatory."
+    },
+    "approval": {
+      "type": "object",
+      "description": "Approval details when decision is require_approval.",
+      "additionalProperties": false,
+      "properties": {
+        "approval_id": {
+          "type": "string",
+          "description": "Identifier for the approval request."
+        },
+        "approvers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Who can approve this action."
+        },
+        "expires_in_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How long the approval request is valid."
+        }
+      }
+    }
+  }
+}

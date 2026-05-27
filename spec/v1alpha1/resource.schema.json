@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oap.dev/spec/v1alpha1/resource.schema.json",
+  "title": "OAP Resource",
+  "description": "A protected resource type registered with OAP. Individual resource instances are identified at runtime by type + opaque ID + attributes.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "oap.dev/v1alpha1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "Resource"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "namespace"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "namespace": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["type", "owner"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Dot-namespaced resource type. Example: erp.invoice",
+          "pattern": "^[a-z0-9]+\\.[a-z0-9_.]+$"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description."
+        },
+        "owner": {
+          "type": "string",
+          "description": "Resource owner. Format: user:<id> or group:<name>",
+          "pattern": "^(user|group):.+$"
+        },
+        "classification": {
+          "type": "string",
+          "enum": ["public", "internal", "confidential", "restricted"],
+          "description": "Data classification."
+        },
+        "environment": {
+          "type": "string",
+          "enum": ["development", "staging", "production"],
+          "description": "Environment."
+        },
+        "actions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Actions that can be performed on this resource type."
+        },
+        "attributes": {
+          "type": "object",
+          "description": "Additional key-value attributes for policy matching.",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    }
+  }
+}
