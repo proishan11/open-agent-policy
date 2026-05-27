@@ -1,0 +1,1386 @@
+openapi: 3.1.0
+info:
+  title: Open Agent Policy Server API
+  description: |
+    API contract for the OAP control plane server. This is the HTTP interface
+    that agents, SDKs, gateways, proxies, and CLI tools use to register agents,
+    manage policies, authorize actions, and query audit events.
+  version: v1alpha1
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://oap.internal
+    description: Production
+
+tags:
+  - name: agents
+    description: Agent registration and lifecycle management
+  - name: resources
+    description: Resource type registration
+  - name: tools
+    description: Tool registration
+  - name: policies
+    description: Policy management
+  - name: authorize
+    description: Runtime authorization decisions
+  - name: simulate
+    description: Policy simulation (dry-run)
+  - name: delegations
+    description: Actor-to-agent delegation management
+  - name: audit
+    description: Audit event queries
+  - name: bundles
+    description: Policy bundle distribution
+  - name: health
+    description: Server health
+
+paths:
+  # ─── Agents ────────────────────────────────────────────────────────────
+  /v1/agents:
+    post:
+      operationId: registerAgent
+      tags: [agents]
+      summary: Register a new agent
+      description: |
+        Registers an agent with OAP. The agent must declare owner, type, risk tier,
+        and capabilities. OAP validates the registration and returns credentials
+        for runtime authentication.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Agent'
+      responses:
+        '201':
+          description: Agent registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRegistrationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Agent already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      operationId: listAgents
+      tags: [agents]
+      summary: List registered agents
+      parameters:
+        - $ref: '#/components/parameters/Namespace'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentList'
+
+  /v1/agents/{agentId}:
+    get:
+      operationId: getAgent
+      tags: [agents]
+      summary: Get agent details
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateAgent
+      tags: [agents]
+      summary: Update agent registration
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Agent'
+      responses:
+        '200':
+          description: Agent updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteAgent
+      tags: [agents]
+      summary: Delete agent registration
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '204':
+          description: Agent deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/agents/{agentId}/revoke:
+    post:
+      operationId: revokeAgent
+      tags: [agents]
+      summary: Revoke an agent
+      description: |
+        Sets agent status to revoked. All active grants are invalidated.
+        All enforcement points deny requests from this agent immediately.
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  description: Reason for revocation
+      responses:
+        '200':
+          description: Agent revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+
+  # ─── Resources ─────────────────────────────────────────────────────────
+  /v1/resources:
+    post:
+      operationId: registerResource
+      tags: [resources]
+      summary: Register a resource type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Resource'
+      responses:
+        '201':
+          description: Resource registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      operationId: listResources
+      tags: [resources]
+      summary: List registered resources
+      parameters:
+        - $ref: '#/components/parameters/Namespace'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: List of resources
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceList'
+
+  # ─── Tools ─────────────────────────────────────────────────────────────
+  /v1/tools:
+    post:
+      operationId: registerTool
+      tags: [tools]
+      summary: Register a tool
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Tool'
+      responses:
+        '201':
+          description: Tool registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tool'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      operationId: listTools
+      tags: [tools]
+      summary: List registered tools
+      parameters:
+        - $ref: '#/components/parameters/Namespace'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: List of tools
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolList'
+
+  # ─── Policies ──────────────────────────────────────────────────────────
+  /v1/policies:
+    post:
+      operationId: applyPolicy
+      tags: [policies]
+      summary: Create or update a policy
+      description: |
+        Applies a policy. If a policy with the same name and namespace exists,
+        it is replaced. This is idempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentPolicy'
+      responses:
+        '200':
+          description: Policy applied (updated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPolicy'
+        '201':
+          description: Policy applied (created)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPolicy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      operationId: listPolicies
+      tags: [policies]
+      summary: List policies
+      parameters:
+        - $ref: '#/components/parameters/Namespace'
+        - name: agent
+          in: query
+          schema:
+            type: string
+          description: Filter policies matching this agent ID
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: List of policies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyList'
+
+  /v1/policies/{namespace}/{name}:
+    get:
+      operationId: getPolicy
+      tags: [policies]
+      summary: Get a specific policy
+      parameters:
+        - name: namespace
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Policy details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPolicy'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deletePolicy
+      tags: [policies]
+      summary: Delete a policy
+      parameters:
+        - name: namespace
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Policy deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─── Authorization ─────────────────────────────────────────────────────
+  /v1/authorize:
+    post:
+      operationId: authorize
+      tags: [authorize]
+      summary: Authorize an agent action
+      description: |
+        The core decision endpoint. Receives a normalized authorization request,
+        evaluates it against registered agents, policies, delegations, and context,
+        and returns a structured decision with optional grant, constraints, and obligations.
+
+        This is the hot path — every protected tool call hits this endpoint (or the
+        embedded evaluator equivalent).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorizationRequest'
+      responses:
+        '200':
+          description: Authorization decision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationDecision'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ─── Simulation ────────────────────────────────────────────────────────
+  /v1/simulate:
+    post:
+      operationId: simulate
+      tags: [simulate]
+      summary: Simulate an authorization decision (dry-run)
+      description: |
+        Same evaluation logic as /v1/authorize but does not issue grants,
+        does not emit audit events, and includes a detailed evaluation trace
+        in the response. Used for testing and debugging.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorizationRequest'
+      responses:
+        '200':
+          description: Simulated decision with evaluation trace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimulationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ─── Delegations ───────────────────────────────────────────────────────
+  /v1/delegations:
+    post:
+      operationId: createDelegation
+      tags: [delegations]
+      summary: Create a delegation
+      description: |
+        Creates a scoped, time-bound delegation from an actor to an agent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Delegation'
+      responses:
+        '201':
+          description: Delegation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Delegation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      operationId: listDelegations
+      tags: [delegations]
+      summary: List active delegations
+      parameters:
+        - name: agent
+          in: query
+          schema:
+            type: string
+          description: Filter by delegate agent ID
+        - name: actor
+          in: query
+          schema:
+            type: string
+          description: Filter by delegator actor ID
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: List of delegations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DelegationList'
+
+  /v1/delegations/{delegationId}/revoke:
+    post:
+      operationId: revokeDelegation
+      tags: [delegations]
+      summary: Revoke a delegation
+      parameters:
+        - name: delegationId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Delegation revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Delegation'
+
+  # ─── Audit ─────────────────────────────────────────────────────────────
+  /v1/audit:
+    get:
+      operationId: queryAudit
+      tags: [audit]
+      summary: Query audit events
+      parameters:
+        - name: agent
+          in: query
+          schema:
+            type: string
+          description: Filter by agent ID
+        - name: actor
+          in: query
+          schema:
+            type: string
+          description: Filter by actor ID
+        - name: action
+          in: query
+          schema:
+            type: string
+          description: Filter by action name
+        - name: decision
+          in: query
+          schema:
+            type: string
+            enum: [allow, allow_with_constraints, deny, require_approval, require_delegation, require_step_up_auth]
+          description: Filter by decision type
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Events after this timestamp
+        - name: until
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Events before this timestamp
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Audit events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventList'
+
+  # ─── Bundles ───────────────────────────────────────────────────────────
+  /v1/bundles:
+    get:
+      operationId: getBundle
+      tags: [bundles]
+      summary: Download policy bundle
+      description: |
+        Returns a policy bundle for embedded evaluators. The bundle contains
+        all agents, resources, tools, and policies needed for local evaluation.
+        Embedded evaluators poll this endpoint periodically.
+      parameters:
+        - name: namespace
+          in: query
+          schema:
+            type: string
+          description: Filter bundle to a specific namespace
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+          description: ETag from previous bundle download for cache validation
+      responses:
+        '200':
+          description: Policy bundle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyBundle'
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Bundle version for cache validation
+        '304':
+          description: Bundle has not changed (ETag matched)
+
+  # ─── Health ────────────────────────────────────────────────────────────
+  /v1/health:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Server health check
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy]
+                  version:
+                    type: string
+                  agents_count:
+                    type: integer
+                  policies_count:
+                    type: integer
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Components
+# ═══════════════════════════════════════════════════════════════════════════
+components:
+  # ─── Parameters ──────────────────────────────────────────────────────
+  parameters:
+    AgentId:
+      name: agentId
+      in: path
+      required: true
+      description: "Agent identifier. URL-encoded form of agent://<namespace>/<name>"
+      schema:
+        type: string
+    Namespace:
+      name: namespace
+      in: query
+      schema:
+        type: string
+      description: Filter by namespace
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 50
+        maximum: 200
+      description: Maximum number of items to return
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        default: 0
+      description: Number of items to skip
+
+  # ─── Reusable Responses ─────────────────────────────────────────────
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  # ─── Schemas ─────────────────────────────────────────────────────────
+  schemas:
+    # ── Error ──────────────────────────────────────────────────────────
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    # ── Authorization Request ──────────────────────────────────────────
+    AuthorizationRequest:
+      type: object
+      required: [request_id, timestamp, subject, action]
+      properties:
+        request_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        subject:
+          type: object
+          required: [type, agent_id]
+          properties:
+            type:
+              type: string
+              const: agent
+            agent_id:
+              type: string
+            agent_version:
+              type: string
+            instance_id:
+              type: string
+            trust_level:
+              type: string
+              enum: [unverified, verified, attested]
+        actor:
+          type: object
+          required: [type, id]
+          properties:
+            type:
+              type: string
+              enum: [user, service, agent]
+            id:
+              type: string
+            groups:
+              type: array
+              items:
+                type: string
+            roles:
+              type: array
+              items:
+                type: string
+            auth_strength:
+              type: string
+              enum: [none, password, mfa, phishing_resistant_mfa]
+        action:
+          type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+            risk:
+              type: string
+              enum: [low, medium, high, critical]
+        resource:
+          type: object
+          required: [type]
+          properties:
+            type:
+              type: string
+            id:
+              type: string
+            owner:
+              type: string
+            classification:
+              type: string
+              enum: [public, internal, confidential, restricted]
+            environment:
+              type: string
+              enum: [development, staging, production]
+            attributes:
+              type: object
+              additionalProperties:
+                type: string
+        tool:
+          type: object
+          properties:
+            name:
+              type: string
+            protocol:
+              type: string
+              enum: [mcp, http, function, shell, sdk]
+            server:
+              type: string
+        context:
+          type: object
+          additionalProperties: true
+          properties:
+            purpose:
+              type: string
+            run_id:
+              type: string
+            environment:
+              type: string
+            delegation_id:
+              type: string
+            approval_id:
+              type: string
+
+    # ── Authorization Decision ─────────────────────────────────────────
+    AuthorizationDecision:
+      type: object
+      required: [decision_id, decision, reason]
+      properties:
+        decision_id:
+          type: string
+        request_id:
+          type: string
+        decision:
+          type: string
+          enum: [allow, allow_with_constraints, deny, require_approval, require_delegation, require_step_up_auth]
+        policy_ids:
+          type: array
+          items:
+            type: string
+        grant:
+          type: object
+          properties:
+            grant_id:
+              type: string
+            token:
+              type: string
+            expires_in_seconds:
+              type: integer
+            audience:
+              type: string
+            scope:
+              type: array
+              items:
+                type: string
+        constraints:
+          type: object
+          additionalProperties: true
+          properties:
+            max_records:
+              type: integer
+            redact_fields:
+              type: array
+              items:
+                type: string
+            readonly:
+              type: boolean
+            time_window_seconds:
+              type: integer
+        obligations:
+          type: object
+          properties:
+            audit:
+              type: boolean
+            log_full_request:
+              type: boolean
+            notify:
+              type: array
+              items:
+                type: string
+        reason:
+          type: string
+        approval:
+          type: object
+          properties:
+            approval_id:
+              type: string
+            approvers:
+              type: array
+              items:
+                type: string
+            expires_in_seconds:
+              type: integer
+
+    # ── Simulation Result ──────────────────────────────────────────────
+    SimulationResult:
+      type: object
+      required: [decision, trace]
+      properties:
+        decision:
+          $ref: '#/components/schemas/AuthorizationDecision'
+        trace:
+          type: array
+          description: Step-by-step evaluation trace
+          items:
+            type: object
+            properties:
+              step:
+                type: string
+                description: Evaluation step name
+              result:
+                type: string
+                enum: [pass, fail, skip, match, no_match]
+              detail:
+                type: string
+                description: Human-readable detail for this step
+              policy_id:
+                type: string
+                description: Policy involved in this step (if any)
+
+    # ── Agent ──────────────────────────────────────────────────────────
+    Agent:
+      type: object
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion:
+          type: string
+          const: oap.dev/v1alpha1
+        kind:
+          type: string
+          const: Agent
+        metadata:
+          type: object
+          required: [name, namespace]
+          properties:
+            name:
+              type: string
+            namespace:
+              type: string
+            labels:
+              type: object
+              additionalProperties:
+                type: string
+            annotations:
+              type: object
+              additionalProperties:
+                type: string
+        spec:
+          type: object
+          required: [owner, type, riskTier, capabilities]
+          properties:
+            owner:
+              type: string
+            description:
+              type: string
+            type:
+              type: string
+              enum: [workflow_agent, chat_agent, autonomous_agent, pipeline_agent, tool_agent]
+            version:
+              type: string
+            lifecycle:
+              type: string
+              enum: [development, staging, production, deprecated]
+            riskTier:
+              type: string
+              enum: [low, medium, high, critical]
+            publisher:
+              type: string
+            framework:
+              type: string
+            capabilities:
+              type: array
+              items:
+                type: string
+            runtime:
+              type: object
+              properties:
+                platform:
+                  type: string
+                namespace:
+                  type: string
+                serviceAccount:
+                  type: string
+                workloadIdentity:
+                  type: string
+                imageDigest:
+                  type: string
+            tools:
+              type: array
+              items:
+                type: object
+                required: [name, action]
+                properties:
+                  name:
+                    type: string
+                  action:
+                    type: string
+                  resource:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      idFrom:
+                        type: string
+        status:
+          type: object
+          properties:
+            state:
+              type: string
+              enum: [active, suspended, revoked, pending_review]
+            registeredAt:
+              type: string
+              format: date-time
+            lastSeenAt:
+              type: string
+              format: date-time
+            credentials:
+              type: object
+              properties:
+                clientId:
+                  type: string
+                tokenEndpoint:
+                  type: string
+                  format: uri
+
+    AgentRegistrationResponse:
+      type: object
+      required: [agent, credentials]
+      properties:
+        agent:
+          $ref: '#/components/schemas/Agent'
+        credentials:
+          type: object
+          required: [client_id, token_endpoint]
+          properties:
+            client_id:
+              type: string
+            client_secret:
+              type: string
+              description: Only returned once on initial registration
+            token_endpoint:
+              type: string
+              format: uri
+        warnings:
+          type: array
+          items:
+            type: string
+          description: Warnings (e.g., "No policies attached yet")
+
+    AgentList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Agent'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # ── Resource ───────────────────────────────────────────────────────
+    Resource:
+      type: object
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion:
+          type: string
+          const: oap.dev/v1alpha1
+        kind:
+          type: string
+          const: Resource
+        metadata:
+          type: object
+          required: [name, namespace]
+          properties:
+            name:
+              type: string
+            namespace:
+              type: string
+            labels:
+              type: object
+              additionalProperties:
+                type: string
+        spec:
+          type: object
+          required: [type, owner]
+          properties:
+            type:
+              type: string
+            description:
+              type: string
+            owner:
+              type: string
+            classification:
+              type: string
+              enum: [public, internal, confidential, restricted]
+            environment:
+              type: string
+              enum: [development, staging, production]
+            actions:
+              type: array
+              items:
+                type: string
+            attributes:
+              type: object
+              additionalProperties:
+                type: string
+
+    ResourceList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resource'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # ── Tool ───────────────────────────────────────────────────────────
+    Tool:
+      type: object
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion:
+          type: string
+          const: oap.dev/v1alpha1
+        kind:
+          type: string
+          const: Tool
+        metadata:
+          type: object
+          required: [name, namespace]
+          properties:
+            name:
+              type: string
+            namespace:
+              type: string
+            labels:
+              type: object
+              additionalProperties:
+                type: string
+        spec:
+          type: object
+          required: [name, action]
+          properties:
+            name:
+              type: string
+            description:
+              type: string
+            action:
+              type: string
+            protocol:
+              type: string
+              enum: [mcp, http, function, shell, sdk]
+            server:
+              type: string
+            risk:
+              type: string
+              enum: [low, medium, high, critical]
+            resource:
+              type: object
+              properties:
+                type:
+                  type: string
+                idFrom:
+                  type: string
+            inputSchema:
+              type: object
+
+    ToolList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tool'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # ── Policy ─────────────────────────────────────────────────────────
+    AgentPolicy:
+      type: object
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion:
+          type: string
+          const: oap.dev/v1alpha1
+        kind:
+          type: string
+          const: AgentPolicy
+        metadata:
+          type: object
+          required: [name, namespace]
+          properties:
+            name:
+              type: string
+            namespace:
+              type: string
+            labels:
+              type: object
+              additionalProperties:
+                type: string
+            annotations:
+              type: object
+              additionalProperties:
+                type: string
+        spec:
+          type: object
+          required: [subject, rules]
+          properties:
+            subject:
+              type: object
+              properties:
+                agent:
+                  type: string
+                agentType:
+                  type: string
+                agentNamespace:
+                  type: string
+                allAgents:
+                  type: boolean
+            rules:
+              type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/PolicyRule'
+
+    PolicyRule:
+      type: object
+      required: [effect, actions]
+      properties:
+        effect:
+          type: string
+          enum: [allow, deny, require_approval, require_delegation]
+        actions:
+          type: array
+          items:
+            type: string
+        resources:
+          type: object
+          properties:
+            types:
+              type: array
+              items:
+                type: string
+            classificationMax:
+              type: string
+              enum: [public, internal, confidential, restricted]
+            environments:
+              type: array
+              items:
+                type: string
+            owners:
+              type: array
+              items:
+                type: string
+        conditions:
+          type: object
+          additionalProperties: true
+        constraints:
+          type: object
+          additionalProperties: true
+        obligations:
+          type: object
+          additionalProperties: true
+        approval:
+          type: object
+          properties:
+            approvers:
+              type: array
+              items:
+                type: string
+            minApprovals:
+              type: integer
+            expiresIn:
+              type: string
+        reason:
+          type: string
+        failMode:
+          type: string
+          enum: [open, closed]
+          default: closed
+
+    PolicyList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPolicy'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # ── Delegation ─────────────────────────────────────────────────────
+    Delegation:
+      type: object
+      required: [delegator, delegate, scope]
+      properties:
+        delegation_id:
+          type: string
+        delegator:
+          type: string
+          description: "Actor delegating authority. Format: user:<id> or service:<name>"
+        delegate:
+          type: string
+          description: "Agent receiving delegated authority. Format: agent://<ns>/<name>"
+        scope:
+          type: object
+          required: [actions]
+          properties:
+            actions:
+              type: array
+              items:
+                type: string
+            resources:
+              type: object
+              properties:
+                types:
+                  type: array
+                  items:
+                    type: string
+                ids:
+                  type: array
+                  items:
+                    type: string
+        expires_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [active, expired, revoked]
+        created_at:
+          type: string
+          format: date-time
+
+    DelegationList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Delegation'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # ── Audit Event ────────────────────────────────────────────────────
+    AuditEvent:
+      type: object
+      required: [event_id, event_type, timestamp, decision, subject, action, reason]
+      properties:
+        event_id:
+          type: string
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        decision:
+          type: string
+        subject:
+          type: object
+          properties:
+            agent_id:
+              type: string
+            instance_id:
+              type: string
+        actor:
+          type: object
+          properties:
+            type:
+              type: string
+            id:
+              type: string
+        action:
+          type: string
+        resource:
+          type: object
+          properties:
+            type:
+              type: string
+            id:
+              type: string
+            classification:
+              type: string
+        policy_ids:
+          type: array
+          items:
+            type: string
+        constraints:
+          type: object
+          additionalProperties: true
+        grant_id:
+          type: string
+        request_id:
+          type: string
+        run_id:
+          type: string
+        trace_id:
+          type: string
+        reason:
+          type: string
+
+    AuditEventList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # ── Policy Bundle ──────────────────────────────────────────────────
+    PolicyBundle:
+      type: object
+      required: [version, agents, resources, tools, policies]
+      properties:
+        version:
+          type: string
+          description: Bundle version (used for cache validation)
+        generated_at:
+          type: string
+          format: date-time
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/Agent'
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resource'
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tool'
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentPolicy'
+        delegations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Delegation'
