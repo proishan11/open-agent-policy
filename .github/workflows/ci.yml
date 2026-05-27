@@ -87,19 +87,14 @@ jobs:
           go-version: "1.22"
 
       - name: Run Go tests
-        run: |
-          if [ -f engine/go.mod ]; then
-            cd engine && go test -v -race -coverprofile=coverage.out ./...
-          else
-            echo "No Go modules yet — skipping"
-          fi
+        run: go test -v -race -coverprofile=coverage.out ./...
 
       - name: Upload Go coverage
-        if: hashFiles('engine/coverage.out') != ''
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: go-coverage
-          path: engine/coverage.out
+          path: coverage.out
 
   # ── Python Tests ─────────────────────────────────────────────────────
   test-python:
@@ -115,10 +110,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install jsonschema pyyaml pytest pytest-cov
-          if [ -f sdk/python/requirements.txt ]; then
-            pip install -r sdk/python/requirements.txt
-          fi
+          pip install pytest pytest-cov
+          pip install -e "sdk/python/[dev]"
 
       - name: Run Python tests
         run: |
