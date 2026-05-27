@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -125,12 +126,13 @@ func TestSimulateEndpoint(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
 	// Register agent and policy
-	srv.Store().RegisterAgent(&model.Agent{
+	ctx := context.Background()
+	srv.Store().RegisterAgent(ctx, &model.Agent{
 		Metadata: model.Metadata{Name: "sim-agent", Namespace: "test"},
 		Spec:     model.AgentSpec{Owner: "test", Type: "workflow_agent", RiskTier: "low", Capabilities: []string{"api.call"}},
 		Status:   model.AgentStatus{State: model.AgentStateActive},
 	})
-	srv.Store().AddPolicy(&model.AgentPolicy{
+	srv.Store().AddPolicy(ctx, &model.AgentPolicy{
 		Metadata: model.Metadata{Name: "allow-api", Namespace: "test"},
 		Spec: model.PolicySpec{
 			Subject: model.PolicySubject{Agent: "agent://test/sim-agent"},

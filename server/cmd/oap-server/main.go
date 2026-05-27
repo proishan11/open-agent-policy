@@ -13,6 +13,9 @@
 //	--addr        Listen address (default ":8080")
 //	--data        Directory of YAML/JSON files to load on startup
 //	--audit-file  Path for JSONL audit log (default: stdout)
+//	--issuer      OIDC issuer URL for agent token validation (enables auth)
+//	--audience    Expected audience claim (optional)
+//	--grant-key   HMAC-SHA256 key for signing grant tokens
 //	--dev         Enable development mode
 package main
 
@@ -32,14 +35,22 @@ func main() {
 	addr := flag.String("addr", ":8080", "listen address")
 	dataDir := flag.String("data", "", "directory of YAML/JSON data files to load on startup")
 	auditFile := flag.String("audit-file", "", "path for JSONL audit log (default: stdout)")
+	issuer := flag.String("issuer", "", "OIDC issuer URL for agent token validation (enables auth)")
+	audience := flag.String("audience", "", "expected audience claim (optional)")
+	grantKey := flag.String("grant-key", "", "HMAC-SHA256 key for signing grant tokens (default: random dev key)")
 	devMode := flag.Bool("dev", false, "enable development mode")
 	flag.Parse()
 
 	cfg := api.Config{
-		Addr:      *addr,
-		DataDir:   *dataDir,
-		AuditFile: *auditFile,
-		DevMode:   *devMode,
+		Addr:            *addr,
+		DataDir:         *dataDir,
+		AuditFile:       *auditFile,
+		DevMode:         *devMode,
+		GrantSigningKey: *grantKey,
+		Auth: api.AuthConfig{
+			IssuerURL: *issuer,
+			Audience:  *audience,
+		},
 	}
 
 	srv, err := api.NewServer(cfg)

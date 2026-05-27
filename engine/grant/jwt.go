@@ -16,18 +16,21 @@ import (
 type Claims struct {
 	// Standard JWT claims
 	Issuer    string `json:"iss"`
-	Subject   string `json:"sub"`
-	Audience  string `json:"aud,omitempty"`
+	Subject   string `json:"sub"`           // agent_id
+	Audience  string `json:"aud,omitempty"` // target resource API
 	ExpiresAt int64  `json:"exp"`
 	IssuedAt  int64  `json:"iat"`
 	JWTID     string `json:"jti"`
 
 	// OAP-specific claims
-	Action      string             `json:"oap_action"`
-	Decision    string             `json:"oap_decision"`
-	PolicyIDs   []string           `json:"oap_policy_ids,omitempty"`
-	Constraints *model.Constraints `json:"oap_constraints,omitempty"`
-	RequestID   string             `json:"oap_request_id,omitempty"`
+	Action       string             `json:"oap_action"`
+	ResourceType string             `json:"oap_resource_type,omitempty"`
+	ResourceID   string             `json:"oap_resource_id,omitempty"`
+	Decision     string             `json:"oap_decision"`
+	PolicyIDs    []string           `json:"oap_policy_ids,omitempty"`
+	Constraints  *model.Constraints `json:"oap_constraints,omitempty"`
+	RequestID    string             `json:"oap_request_id,omitempty"`
+	RunID        string             `json:"oap_run_id,omitempty"`
 }
 
 // Issuer creates signed JWT grant tokens.
@@ -71,20 +74,43 @@ func NewIssuer(cfg IssuerConfig) *Issuer {
 	}
 }
 
-// Issue creates a signed JWT grant from a decision.
+// GrantRequest contains the full context needed to issue a scoped grant.
+type GrantRequest struct {
+	AgentID      string
+	Action       string
+	ResourceType string
+	ResourceID   string
+	Audience     string // target API that will validate the grant
+	RunID        string
+	Decision     model.AuthorizationDecision
+}
+
+// Issue creates a signed JWT grant from an authorization decision.
 func (iss *Issuer) Issue(agentID string, decision model.AuthorizationDecision) (string, error) {
+	return iss.IssueScoped(GrantRequest{
+		AgentID:  agentID,
+		Decision: decision,
+	})
+}
+
+// IssueScoped creates a signed JWT grant with full resource scoping.
+func (iss *Issuer) IssueScoped(req GrantRequest) (string, error) {
 	now := time.Now().UTC()
 	claims := Claims{
-		Issuer:      iss.issuerName,
-		Subject:     agentID,
-		ExpiresAt:   now.Add(iss.defaultTTL).Unix(),
-		IssuedAt:    now.Unix(),
-		JWTID:       decision.DecisionID,
-		Action:      decision.Reason, // We'd normally include the action separately
-		Decision:    decision.Decision,
-		PolicyIDs:   decision.PolicyIDs,
-		Constraints: decision.Constraints,
-		RequestID:   decision.RequestID,
+		Issuer:       iss.issuerName,
+		Subject:      req.AgentID,
+		Audience:     req.Audience,
+		ExpiresAt:    now.Add(iss.defaultTTL).Unix(),
+		IssuedAt:     now.Unix(),
+		JWTID:        req.Decision.DecisionID,
+		Action:       req.Action,
+		ResourceType: req.ResourceType,
+		ResourceID:   req.ResourceID,
+		Decision:     req.Decision.Decision,
+		PolicyIDs:    req.Decision.PolicyIDs,
+		Constraints:  req.Decision.Constraints,
+		RequestID:    req.Decision.RequestID,
+		RunID:        req.RunID,
 	}
 
 	return iss.sign(claims)

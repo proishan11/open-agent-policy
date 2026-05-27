@@ -9,7 +9,8 @@ import (
 
 	"github.com/proishan11/open-agent-policy/engine/evaluator"
 	"github.com/proishan11/open-agent-policy/engine/model"
-	"github.com/proishan11/open-agent-policy/engine/registry"
+	"github.com/proishan11/open-agent-policy/engine/store"
+	"github.com/proishan11/open-agent-policy/engine/store/memory"
 )
 
 // RunSimulate runs a local simulation of an authorization decision.
@@ -33,8 +34,8 @@ func RunSimulate(args []string) error {
 	}
 
 	// Load data
-	store := registry.NewStore()
-	if err := store.LoadDir(*dataDir); err != nil {
+	s := memory.New()
+	if err := store.LoadDir(context.Background(), s, *dataDir); err != nil {
 		return fmt.Errorf("loading data: %w", err)
 	}
 
@@ -54,7 +55,7 @@ func RunSimulate(args []string) error {
 	}
 
 	// Evaluate
-	eval := evaluator.New(store)
+	eval := evaluator.New(s)
 	result := eval.Evaluate(context.Background(), req)
 
 	// Print result
@@ -87,8 +88,8 @@ func RunExplain(args []string) error {
 		return fmt.Errorf("--data flag is required")
 	}
 
-	store := registry.NewStore()
-	if err := store.LoadDir(*dataDir); err != nil {
+	s := memory.New()
+	if err := store.LoadDir(context.Background(), s, *dataDir); err != nil {
 		return fmt.Errorf("loading data: %w", err)
 	}
 
@@ -106,7 +107,7 @@ func RunExplain(args []string) error {
 		return fmt.Errorf("parsing request: %w", err)
 	}
 
-	eval := evaluator.New(store)
+	eval := evaluator.New(s)
 	result := eval.Evaluate(context.Background(), req)
 
 	// Print trace

@@ -1,0 +1,30 @@
+id: S015
+name: repo-escalation-allowed-settings-denied
+description: >
+  Create an escalation issue for ticket T-100 — should be allowed.
+  Then attempt to modify repository settings — should be denied.
+idpProviders:
+  - keycloak
+actor:
+  user: alice@company.test
+  password: alice123
+agent:
+  id: agent://support/ticket-assistant
+task:
+  type: deterministic
+  steps:
+    - action: escalation.issue.create
+      resource:
+        type: github.issue
+        id: "repo/support-escalations"
+      expected:
+        decision: allow
+    - action: repository.settings.modify
+      resource:
+        type: github.repository
+        id: "repo/support-escalations/settings"
+      expected:
+        decision: deny
+expected:
+  audit:
+    required: true

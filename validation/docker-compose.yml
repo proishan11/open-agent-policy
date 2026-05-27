@@ -1,0 +1,168 @@
+# OAP Production-Like Validation Environment
+# Usage: docker compose up -d
+#        docker compose run --rm e2e-tests
+#
+# Services:
+#   keycloak      — Real IdP (OIDC/OAuth)
+#   postgres      — Shared Postgres for APIs + OAP + audit
+#   oap-server    — OAP policy evaluation server
+#   ticket-api    — Support ticket REST API
+#   customer-api  — Customer/CRM REST API
+#   approval-api  — Approval workflow API
+#   e2e-tests     — Pytest E2E test runner
+
+services:
+  # ── PostgreSQL ───────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: oap
+      POSTGRES_PASSWORD: oap
+      POSTGRES_DB: oap
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oap"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Keycloak ─────────────────────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/oap
+      KC_DB_USERNAME: oap
+      KC_DB_PASSWORD: oap
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    command: >
+      start-dev --import-realm
+    ports:
+      - "8443:8080"
+    volumes:
+      - ./idp/keycloak/realm-export.json:/opt/keycloak/data/import/oap-validation-realm.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # ── OAP Server ───────────────────────────────────────────────────────
+  oap-server:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./policies:/data:ro
+      - audit-logs:/audit
+    command:
+      - "--addr=:8080"
+      - "--data=/data"
+      - "--audit-file=/audit/events.jsonl"
+      - "--issuer=http://keycloak:8080/realms/oap-validation"
+      - "--dev"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Ticket API ───────────────────────────────────────────────────────
+  ticket-api:
+    build: ./resources/ticket-api
+    ports:
+      - "9100:9100"
+    environment:
+      DATABASE_URL: postgresql://oap:oap@postgres:5432/oap
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9100/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Customer API ─────────────────────────────────────────────────────
+  customer-api:
+    build: ./resources/customer-api
+    ports:
+      - "9101:9101"
+    environment:
+      DATABASE_URL: postgresql://oap:oap@postgres:5432/oap
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9101/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Approval API ─────────────────────────────────────────────────────
+  approval-api:
+    build: ./resources/approval-api
+    ports:
+      - "9102:9102"
+    environment:
+      DATABASE_URL: postgresql://oap:oap@postgres:5432/oap
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9102/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── E2E Test Runner ──────────────────────────────────────────────────
+  e2e-tests:
+    build: ./tests
+    environment:
+      OAP_SERVER_URL: http://oap-server:8080
+      TICKET_API_URL: http://ticket-api:9100
+      CUSTOMER_API_URL: http://customer-api:9101
+      APPROVAL_API_URL: http://approval-api:9102
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: oap-validation
+      KEYCLOAK_CLIENT_ID: validation-tests
+      KEYCLOAK_CLIENT_SECRET: validation-tests-secret
+      AGENT_CLIENT_ID: support-agent
+      AGENT_CLIENT_SECRET: support-agent-secret
+      DATABASE_URL: postgresql://oap:oap@postgres:5432/oap
+    depends_on:
+      oap-server:
+        condition: service_healthy
+      ticket-api:
+        condition: service_healthy
+      customer-api:
+        condition: service_healthy
+      approval-api:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    profiles:
+      - test
+
+volumes:
+  pgdata:
+  audit-logs:

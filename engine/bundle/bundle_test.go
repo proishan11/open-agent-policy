@@ -8,24 +8,25 @@ import (
 	"testing"
 
 	"github.com/proishan11/open-agent-policy/engine/model"
-	"github.com/proishan11/open-agent-policy/engine/registry"
+	"github.com/proishan11/open-agent-policy/engine/store/memory"
 )
 
-func setupStore() *registry.Store {
-	store := registry.NewStore()
-	store.RegisterAgent(&model.Agent{
+func setupStore() *memory.Store {
+	ctx := context.Background()
+	s := memory.New()
+	s.RegisterAgent(ctx, &model.Agent{
 		Metadata: model.Metadata{Name: "agent-a", Namespace: "test"},
 		Spec:     model.AgentSpec{Owner: "team", Type: "workflow_agent", RiskTier: "low"},
 		Status:   model.AgentStatus{State: model.AgentStateActive},
 	})
-	store.AddPolicy(&model.AgentPolicy{
+	s.AddPolicy(ctx, &model.AgentPolicy{
 		Metadata: model.Metadata{Name: "policy-a", Namespace: "test"},
 		Spec: model.PolicySpec{
 			Subject: model.PolicySubject{Agent: "agent://test/agent-a"},
 			Rules:   []model.PolicyRule{{Effect: "allow", Actions: []string{"read"}}},
 		},
 	})
-	return store
+	return s
 }
 
 func TestServerGenerate(t *testing.T) {
@@ -60,13 +61,13 @@ func TestServerETagStable(t *testing.T) {
 }
 
 func TestServerETagChanges(t *testing.T) {
-	store := setupStore()
-	srv := NewServer(store)
+	s := setupStore()
+	srv := NewServer(s)
 
 	b1 := srv.Generate()
 
 	// Add another agent
-	store.RegisterAgent(&model.Agent{
+	s.RegisterAgent(context.Background(), &model.Agent{
 		Metadata: model.Metadata{Name: "agent-b", Namespace: "test"},
 		Spec:     model.AgentSpec{Owner: "team", Type: "chat_agent", RiskTier: "low"},
 		Status:   model.AgentStatus{State: model.AgentStateActive},
@@ -117,7 +118,7 @@ func TestClientSync(t *testing.T) {
 	defer ts.Close()
 
 	// Empty client store
-	clientStore := registry.NewStore()
+	clientStore := memory.New()
 	client := NewClient(ts.URL, clientStore, 0)
 
 	err := client.Sync(context.Background())
@@ -125,11 +126,14 @@ func TestClientSync(t *testing.T) {
 		t.Fatalf("Sync: %v", err)
 	}
 
-	if len(clientStore.ListAgents()) != 1 {
-		t.Errorf("client agents = %d, want 1", len(clientStore.ListAgents()))
+	ctx := context.Background()
+	agents, _ := clientStore.ListAgents(ctx)
+	if len(agents) != 1 {
+		t.Errorf("client agents = %d, want 1", len(agents))
 	}
-	if len(clientStore.ListPolicies()) != 1 {
-		t.Errorf("client policies = %d, want 1", len(clientStore.ListPolicies()))
+	policies, _ := clientStore.ListPolicies(ctx)
+	if len(policies) != 1 {
+		t.Errorf("client policies = %d, want 1", len(policies))
 	}
 
 	// Second sync — should use ETag and get 304

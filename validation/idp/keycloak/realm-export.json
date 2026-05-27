@@ -1,0 +1,287 @@
+{
+  "realm": "oap-validation",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "defaultSignatureAlgorithm": "RS256",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      { "name": "support_l1", "description": "Level 1 support agent" },
+      { "name": "support_l2", "description": "Level 2 support agent" },
+      { "name": "support_manager", "description": "Support team manager" },
+      { "name": "security_admin", "description": "Security administrator" }
+    ]
+  },
+  "groups": [
+    {
+      "name": "support_l1",
+      "realmRoles": ["support_l1"]
+    },
+    {
+      "name": "support_l2",
+      "realmRoles": ["support_l2"]
+    },
+    {
+      "name": "support_managers",
+      "realmRoles": ["support_manager"]
+    },
+    {
+      "name": "security_admins",
+      "realmRoles": ["security_admin"]
+    },
+    {
+      "name": "support_platform",
+      "realmRoles": []
+    },
+    {
+      "name": "restricted_account_reviewers",
+      "realmRoles": []
+    }
+  ],
+  "users": [
+    {
+      "username": "alice@company.test",
+      "email": "alice@company.test",
+      "firstName": "Alice",
+      "lastName": "Johnson",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "alice123", "temporary": false }
+      ],
+      "realmRoles": ["support_l1"],
+      "groups": ["support_l1", "support_platform"],
+      "attributes": {
+        "region": ["US"],
+        "department": ["support"]
+      }
+    },
+    {
+      "username": "bob@company.test",
+      "email": "bob@company.test",
+      "firstName": "Bob",
+      "lastName": "Chen",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "bob123", "temporary": false }
+      ],
+      "realmRoles": ["support_l2"],
+      "groups": ["support_l2", "support_platform"],
+      "attributes": {
+        "region": ["EU"],
+        "department": ["support"]
+      }
+    },
+    {
+      "username": "charlie@company.test",
+      "email": "charlie@company.test",
+      "firstName": "Charlie",
+      "lastName": "Williams",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "charlie123", "temporary": false }
+      ],
+      "realmRoles": ["support_manager"],
+      "groups": ["support_managers", "support_platform"],
+      "attributes": {
+        "region": ["global"],
+        "department": ["support"]
+      }
+    },
+    {
+      "username": "dana@company.test",
+      "email": "dana@company.test",
+      "firstName": "Dana",
+      "lastName": "Reeves",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "dana123", "temporary": false }
+      ],
+      "realmRoles": ["security_admin"],
+      "groups": ["security_admins"],
+      "attributes": {
+        "region": ["global"],
+        "department": ["security"]
+      }
+    },
+    {
+      "username": "eve@company.test",
+      "email": "eve@company.test",
+      "firstName": "Eve",
+      "lastName": "Santos",
+      "enabled": false,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "eve123", "temporary": false }
+      ],
+      "realmRoles": ["support_l1"],
+      "groups": ["support_l1"],
+      "attributes": {
+        "region": ["US"],
+        "department": ["support"]
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "oap-server",
+      "name": "OAP Server",
+      "description": "OAP policy evaluation server — validates tokens",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "oap-server-secret",
+      "publicClient": false,
+      "bearerOnly": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "support-agent",
+      "name": "Support Operations Agent",
+      "description": "Python support agent — uses client_credentials for agent identity",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "support-agent-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "agent-id-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "config": {
+            "claim.name": "agent_id",
+            "claim.value": "agent://support/ticket-assistant",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "group-membership-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "realm-roles-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "roles",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "region-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "claim.name": "region",
+            "user.attribute": "region",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "validation-tests",
+      "name": "E2E Validation Test Client",
+      "description": "Test client for E2E validation — uses direct access grants for test automation",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "validation-tests-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "group-membership-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "realm-roles-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "roles",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "region-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "claim.name": "region",
+            "user.attribute": "region",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "oap-scope",
+      "description": "OAP authorization scope",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": []
+    }
+  ]
+}

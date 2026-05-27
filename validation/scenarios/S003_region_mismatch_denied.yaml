@@ -1,0 +1,31 @@
+id: S003
+name: region-mismatch-denied
+description: >
+  Alice (US region) asks the agent to read EU customer C-200.
+  Region mismatch should deny access.
+idpProviders:
+  - keycloak
+actor:
+  user: alice@company.test
+  password: alice123
+agent:
+  id: agent://support/ticket-assistant
+task:
+  type: deterministic
+  action: customer.read
+  resource:
+    type: crm.customer
+    id: "C-200"
+    region: EU
+expected:
+  decision: deny
+  noResourceDataReturned: true
+  audit:
+    required: true
+    contains:
+      agent_id: agent://support/ticket-assistant
+      actor_id: alice@company.test
+      action: customer.read
+      resource_id: "C-200"
+      decision: deny
+      reasonContains: region

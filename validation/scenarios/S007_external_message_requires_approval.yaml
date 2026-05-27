@@ -1,0 +1,34 @@
+id: S007
+name: external-message-requires-approval
+description: >
+  Post the customer summary to #external-customer-updates.
+  Should require approval from a support manager before sending.
+idpProviders:
+  - keycloak
+actor:
+  user: alice@company.test
+  password: alice123
+agent:
+  id: agent://support/ticket-assistant
+task:
+  type: deterministic
+  action: message.send
+  resource:
+    type: slack.channel
+    id: "slack:#external-customer-updates"
+    classification: restricted
+approval:
+  approver:
+    user: charlie@company.test
+    password: charlie123
+  decision: approved
+expected:
+  before_approval:
+    decision: require_approval
+  after_approval:
+    decision: allow
+  audit:
+    required: true
+    contains:
+      action: message.send
+      resource_id: "slack:#external-customer-updates"

@@ -1,0 +1,26 @@
+id: S011
+name: revoked-agent-denied
+description: >
+  Revoked agent (agent://support/revoked-agent) attempts to read a ticket.
+  Should be denied because agent status is revoked.
+idpProviders:
+  - keycloak
+actor:
+  user: alice@company.test
+  password: alice123
+agent:
+  id: agent://support/revoked-agent
+task:
+  type: deterministic
+  action: ticket.read
+  resource:
+    type: support.ticket
+    id: "T-100"
+expected:
+  decision: deny
+  audit:
+    required: true
+    contains:
+      agent_id: agent://support/revoked-agent
+      decision: deny
+      reasonContains: revoked

@@ -1,0 +1,26 @@
+id: S006
+name: internal-message-allowed
+description: >
+  Post a sanitized ticket summary to #support-triage (internal channel).
+  Should be allowed.
+idpProviders:
+  - keycloak
+actor:
+  user: alice@company.test
+  password: alice123
+agent:
+  id: agent://support/ticket-assistant
+task:
+  type: deterministic
+  action: message.send
+  resource:
+    type: slack.channel
+    id: "slack:#support-triage"
+    classification: internal
+expected:
+  decision: allow
+  audit:
+    required: true
+    contains:
+      action: message.send
+      decision: allow

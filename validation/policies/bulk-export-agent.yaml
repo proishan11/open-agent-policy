@@ -1,0 +1,15 @@
+apiVersion: oap/v1alpha1
+kind: Agent
+metadata:
+  name: bulk-export-agent
+  namespace: support
+spec:
+  owner: "group:data_platform"
+  type: workflow_agent
+  riskTier: high
+  description: "Bulk data export agent — heavily restricted by policy."
+  capabilities:
+    - ticket.bulk_export
+    - customer.bulk_export
+  runtime:
+    language: python

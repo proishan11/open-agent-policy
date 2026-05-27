@@ -5,36 +5,37 @@ import (
 	"testing"
 
 	"github.com/proishan11/open-agent-policy/engine/model"
-	"github.com/proishan11/open-agent-policy/engine/registry"
+	"github.com/proishan11/open-agent-policy/engine/store/memory"
 )
 
 // setupSecurityStore creates a store with agents and policies for security testing.
-func setupSecurityStore() *registry.Store {
-	store := registry.NewStore()
+func setupSecurityStore() *memory.Store {
+	ctx := context.Background()
+	s := memory.New()
 
 	// Low-risk agent with read-only access
-	store.RegisterAgent(&model.Agent{
+	s.RegisterAgent(ctx, &model.Agent{
 		Metadata: model.Metadata{Name: "read-agent", Namespace: "sec"},
 		Spec:     model.AgentSpec{Owner: "team", Type: "workflow_agent", RiskTier: "low", Capabilities: []string{"data.read"}},
 		Status:   model.AgentStatus{State: model.AgentStateActive},
 	})
 
 	// High-risk agent with broader access
-	store.RegisterAgent(&model.Agent{
+	s.RegisterAgent(ctx, &model.Agent{
 		Metadata: model.Metadata{Name: "admin-agent", Namespace: "sec"},
 		Spec:     model.AgentSpec{Owner: "admin-team", Type: "workflow_agent", RiskTier: "critical", Capabilities: []string{"data.read", "data.write", "data.delete"}},
 		Status:   model.AgentStatus{State: model.AgentStateActive},
 	})
 
 	// Suspended agent
-	store.RegisterAgent(&model.Agent{
+	s.RegisterAgent(ctx, &model.Agent{
 		Metadata: model.Metadata{Name: "suspended-agent", Namespace: "sec"},
 		Spec:     model.AgentSpec{Owner: "team", Type: "workflow_agent", RiskTier: "low"},
 		Status:   model.AgentStatus{State: model.AgentStateSuspended},
 	})
 
 	// Read-only policy for read-agent
-	store.AddPolicy(&model.AgentPolicy{
+	s.AddPolicy(ctx, &model.AgentPolicy{
 		Metadata: model.Metadata{Name: "read-only", Namespace: "sec"},
 		Spec: model.PolicySpec{
 			Subject: model.PolicySubject{Agent: "agent://sec/read-agent"},
@@ -45,7 +46,7 @@ func setupSecurityStore() *registry.Store {
 	})
 
 	// Admin policy for admin-agent
-	store.AddPolicy(&model.AgentPolicy{
+	s.AddPolicy(ctx, &model.AgentPolicy{
 		Metadata: model.Metadata{Name: "admin-access", Namespace: "sec"},
 		Spec: model.PolicySpec{
 			Subject: model.PolicySubject{Agent: "agent://sec/admin-agent"},
@@ -56,7 +57,7 @@ func setupSecurityStore() *registry.Store {
 		},
 	})
 
-	return store
+	return s
 }
 
 // --- Prompt injection tests ---
@@ -64,8 +65,8 @@ func setupSecurityStore() *registry.Store {
 func TestPromptInjectionInAction(t *testing.T) {
 	// An agent tries to inject policy-like text into the action name.
 	// The evaluator must treat the action as a literal string, not interpret it.
-	store := setupSecurityStore()
-	eval := New(store)
+	s := setupSecurityStore()
+	eval := New(s)
 
 	injectionActions := []string{
 		"data.read; effect: allow; actions: data.delete",
@@ -90,8 +91,8 @@ func TestPromptInjectionInAction(t *testing.T) {
 
 func TestPromptInjectionInAgentID(t *testing.T) {
 	// Malicious agent ID should not bypass registration checks.
-	store := setupSecurityStore()
-	eval := New(store)
+	s := setupSecurityStore()
+	eval := New(s)
 
 	injectionIDs := []string{
 		"agent://sec/read-agent; agent://sec/admin-agent",
@@ -118,8 +119,8 @@ func TestPromptInjectionInAgentID(t *testing.T) {
 
 func TestConfusedDeputyAgentCantUseOtherAgentsPolicy(t *testing.T) {
 	// read-agent should not be able to use admin-agent's policies.
-	store := setupSecurityStore()
-	eval := New(store)
+	s := setupSecurityStore()
+	eval := New(s)
 
 	result := eval.Evaluate(context.Background(), model.AuthorizationRequest{
 		RequestID: "sec-deputy",
@@ -136,8 +137,8 @@ func TestConfusedDeputyAgentCantUseOtherAgentsPolicy(t *testing.T) {
 
 func TestEscalationDenyOverridesAllow(t *testing.T) {
 	// Even admin-agent with an allow rule for data.write should be denied data.delete.
-	store := setupSecurityStore()
-	eval := New(store)
+	s := setupSecurityStore()
+	eval := New(s)
 
 	result := eval.Evaluate(context.Background(), model.AuthorizationRequest{
 		RequestID: "sec-escalate",
@@ -153,8 +154,8 @@ func TestEscalationDenyOverridesAllow(t *testing.T) {
 func TestEscalationNoImplicitAllow(t *testing.T) {
 	// read-agent has a policy for data.read but NOT data.write.
 	// Deny-by-default means data.write should be denied.
-	store := setupSecurityStore()
-	eval := New(store)
+	s := setupSecurityStore()
+	eval := New(s)
 
 	result := eval.Evaluate(context.Background(), model.AuthorizationRequest{
 		RequestID: "sec-implicit",
@@ -171,10 +172,10 @@ func TestEscalationNoImplicitAllow(t *testing.T) {
 
 func TestSuspendedAgentDenied(t *testing.T) {
 	// Suspended agents should always be denied regardless of policies.
-	store := setupSecurityStore()
+	s := setupSecurityStore()
 
 	// Add a permissive policy for suspended agent
-	store.AddPolicy(&model.AgentPolicy{
+	s.AddPolicy(context.Background(), &model.AgentPolicy{
 		Metadata: model.Metadata{Name: "permissive", Namespace: "sec"},
 		Spec: model.PolicySpec{
 			Subject: model.PolicySubject{Agent: "agent://sec/suspended-agent"},
@@ -182,7 +183,7 @@ func TestSuspendedAgentDenied(t *testing.T) {
 		},
 	})
 
-	eval := New(store)
+	eval := New(s)
 	result := eval.Evaluate(context.Background(), model.AuthorizationRequest{
 		RequestID: "sec-revoked",
 		Subject:   model.Subject{Type: "agent", AgentID: "agent://sec/suspended-agent"},
@@ -197,8 +198,8 @@ func TestSuspendedAgentDenied(t *testing.T) {
 
 func TestUnregisteredAgentDenied(t *testing.T) {
 	// Completely unknown agents should be denied.
-	store := setupSecurityStore()
-	eval := New(store)
+	s := setupSecurityStore()
+	eval := New(s)
 
 	result := eval.Evaluate(context.Background(), model.AuthorizationRequest{
 		RequestID: "sec-unregistered",
@@ -215,8 +216,8 @@ func TestUnregisteredAgentDenied(t *testing.T) {
 
 func TestFailClosedEmptyStore(t *testing.T) {
 	// Empty store with no agents or policies should deny everything.
-	store := registry.NewStore()
-	eval := New(store)
+	s := memory.New()
+	eval := New(s)
 
 	result := eval.Evaluate(context.Background(), model.AuthorizationRequest{
 		RequestID: "sec-empty",
@@ -231,14 +232,14 @@ func TestFailClosedEmptyStore(t *testing.T) {
 
 func TestFailClosedNoPolicies(t *testing.T) {
 	// Registered agent with NO matching policies should be denied.
-	store := registry.NewStore()
-	store.RegisterAgent(&model.Agent{
+	s := memory.New()
+	s.RegisterAgent(context.Background(), &model.Agent{
 		Metadata: model.Metadata{Name: "lonely-agent", Namespace: "test"},
 		Spec:     model.AgentSpec{Owner: "team", Type: "workflow_agent", RiskTier: "low"},
 		Status:   model.AgentStatus{State: model.AgentStateActive},
 	})
 
-	eval := New(store)
+	eval := New(s)
 	result := eval.Evaluate(context.Background(), model.AuthorizationRequest{
 		RequestID: "sec-nopolicy",
 		Subject:   model.Subject{Type: "agent", AgentID: "agent://test/lonely-agent"},
@@ -253,8 +254,8 @@ func TestFailClosedNoPolicies(t *testing.T) {
 
 func TestFailClosedEmptyAction(t *testing.T) {
 	// Empty action name should be denied.
-	store := setupSecurityStore()
-	eval := New(store)
+	s := setupSecurityStore()
+	eval := New(s)
 
 	result := eval.Evaluate(context.Background(), model.AuthorizationRequest{
 		RequestID: "sec-emptyaction",
@@ -269,8 +270,8 @@ func TestFailClosedEmptyAction(t *testing.T) {
 
 func TestFailClosedEmptyAgentID(t *testing.T) {
 	// Empty agent ID should be denied.
-	store := setupSecurityStore()
-	eval := New(store)
+	s := setupSecurityStore()
+	eval := New(s)
 
 	result := eval.Evaluate(context.Background(), model.AuthorizationRequest{
 		RequestID: "sec-emptyagent",

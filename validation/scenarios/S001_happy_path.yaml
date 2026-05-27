@@ -1,0 +1,36 @@
+id: S001
+name: happy-path-assigned-ticket-summary
+description: >
+  Alice asks the agent to summarize ticket T-100 and include the customer status.
+  Alice is assigned to T-100. The agent should be allowed with redaction constraints.
+idpProviders:
+  - keycloak
+actor:
+  user: alice@company.test
+  password: alice123
+agent:
+  id: agent://support/ticket-assistant
+task:
+  type: deterministic
+  steps:
+    - action: ticket.read
+      resource:
+        type: support.ticket
+        id: "T-100"
+    - action: customer.read
+      resource:
+        type: crm.customer
+        id: "C-100"
+expected:
+  decision: allow
+  constraints:
+    redact_fields:
+      - tax_identifier
+      - billing_account
+      - bank_account
+  audit:
+    required: true
+    contains:
+      agent_id: agent://support/ticket-assistant
+      actor_id: alice@company.test
+      decision: allow

@@ -39,12 +39,14 @@ func RunDev(args []string) error {
 	}
 	defer srv.Close()
 
-	store := srv.Store()
+	s := srv.Store()
+	agents, _ := s.ListAgents(context.Background())
+	policies, _ := s.ListPolicies(context.Background())
 	fmt.Printf("OAP Dev Server\n")
 	fmt.Printf("  Addr:     %s\n", *addr)
 	fmt.Printf("  Data:     %s\n", *dataDir)
-	fmt.Printf("  Agents:   %d\n", len(store.ListAgents()))
-	fmt.Printf("  Policies: %d\n", len(store.ListPolicies()))
+	fmt.Printf("  Agents:   %d\n", len(agents))
+	fmt.Printf("  Policies: %d\n", len(policies))
 	fmt.Println()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

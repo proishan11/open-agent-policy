@@ -1,9 +1,11 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -13,7 +15,7 @@ import (
 	"github.com/proishan11/open-agent-policy/engine/audit"
 	"github.com/proishan11/open-agent-policy/engine/evaluator"
 	"github.com/proishan11/open-agent-policy/engine/model"
-	"github.com/proishan11/open-agent-policy/engine/registry"
+	"github.com/proishan11/open-agent-policy/engine/store"
 )
 
 // Config holds MCP proxy configuration.
@@ -30,8 +32,13 @@ type Config struct {
 	// ObserveMode when true logs decisions without blocking denied calls.
 	ObserveMode bool
 
-	// Store is the registry store (agents, policies).
-	Store *registry.Store
+	// Store is the policy store (for embedded evaluator mode).
+	Store store.Store
+
+	// OAPServerURL is the OAP server URL for remote auth mode.
+	// When set, the proxy calls /v1/authorize on the OAP server
+	// instead of using the embedded evaluator.
+	OAPServerURL string
 
 	// AuditSink receives audit events.
 	AuditSink audit.Sink
@@ -41,6 +48,7 @@ type Config struct {
 type MCPProxy struct {
 	cfg       Config
 	eval      *evaluator.Evaluator
+	http      *http.Client // for OAP server calls in remote mode
 	logger    *log.Logger
 	mu        sync.RWMutex
 	toolCache map[string]MCPTool // cached upstream tools (name → tool)
@@ -83,12 +91,19 @@ type ToolCallParams struct {
 
 // New creates a new MCP proxy.
 func New(cfg Config) *MCPProxy {
-	return &MCPProxy{
+	p := &MCPProxy{
 		cfg:       cfg,
-		eval:      evaluator.New(cfg.Store),
+		http:      &http.Client{Timeout: 5 * time.Second},
 		logger:    log.New(log.Writer(), "[mcp-proxy] ", log.LstdFlags),
 		toolCache: make(map[string]MCPTool),
 	}
+	if cfg.OAPServerURL != "" {
+		p.logger.Printf("remote auth mode: OAP server=%s", cfg.OAPServerURL)
+	} else if cfg.Store != nil {
+		p.eval = evaluator.New(cfg.Store)
+		p.logger.Printf("embedded evaluator mode")
+	}
+	return p
 }
 
 // Handler returns the HTTP handler for the proxy.
@@ -186,35 +201,41 @@ func (p *MCPProxy) handleToolsCall(w http.ResponseWriter, r *http.Request, req *
 		Action:    model.Action{Name: params.Name},
 		Tool:      &model.ToolRef{Name: params.Name, Protocol: "mcp"},
 	}
-	result := p.eval.Evaluate(r.Context(), authReq)
 
-	// Emit audit event
-	p.emitAuditEvent(authReq, result.Decision)
+	var dec model.AuthorizationDecision
+	if p.cfg.OAPServerURL != "" {
+		bearer := extractMCPBearer(r)
+		dec = p.authorizeRemote(r.Context(), authReq, bearer)
+	} else {
+		result := p.eval.Evaluate(r.Context(), authReq)
+		dec = result.Decision
+		p.emitAuditEvent(authReq, dec)
+	}
 
-	decision := result.Decision.Decision
+	decision := dec.Decision
 
 	if decision == model.DecisionDeny && !p.cfg.ObserveMode {
 		p.logger.Printf("tools/call DENIED: %s → %s (%s)",
-			p.cfg.AgentID, params.Name, result.Decision.Reason)
+			p.cfg.AgentID, params.Name, dec.Reason)
 		p.writeError(w, req.ID, -32001,
-			fmt.Sprintf("OAP: tool call denied — %s", result.Decision.Reason))
+			fmt.Sprintf("OAP: tool call denied — %s", dec.Reason))
 		return
 	}
 
 	if decision == model.DecisionDeny && p.cfg.ObserveMode {
 		p.logger.Printf("tools/call OBSERVE (would deny): %s → %s (%s)",
-			p.cfg.AgentID, params.Name, result.Decision.Reason)
+			p.cfg.AgentID, params.Name, dec.Reason)
 	}
 
 	if decision == model.DecisionRequireApproval && !p.cfg.ObserveMode {
 		p.logger.Printf("tools/call APPROVAL REQUIRED: %s → %s", p.cfg.AgentID, params.Name)
 		p.writeError(w, req.ID, -32002,
-			fmt.Sprintf("OAP: approval required — %s", result.Decision.Reason))
+			fmt.Sprintf("OAP: approval required — %s", dec.Reason))
 		return
 	}
 
 	// Log constraints if present
-	if result.Decision.Constraints != nil {
+	if dec.Constraints != nil {
 		p.logger.Printf("tools/call ALLOWED with constraints: %s → %s", p.cfg.AgentID, params.Name)
 	} else {
 		p.logger.Printf("tools/call ALLOWED: %s → %s", p.cfg.AgentID, params.Name)
@@ -222,6 +243,57 @@ func (p *MCPProxy) handleToolsCall(w http.ResponseWriter, r *http.Request, req *
 
 	// Forward to upstream
 	p.forwardToUpstream(w, r, req)
+}
+
+// authorizeRemote calls the OAP server's /v1/authorize endpoint.
+func (p *MCPProxy) authorizeRemote(ctx context.Context, authReq model.AuthorizationRequest, bearer string) model.AuthorizationDecision {
+	body, _ := json.Marshal(authReq)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST",
+		p.cfg.OAPServerURL+"/v1/authorize", bytes.NewReader(body))
+	if err != nil {
+		p.logger.Printf("ERROR: building OAP request: %v", err)
+		return mcpDenyDecision("proxy error: " + err.Error())
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if bearer != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+bearer)
+	}
+
+	resp, err := p.http.Do(httpReq)
+	if err != nil {
+		p.logger.Printf("ERROR: OAP server unreachable: %v", err)
+		return mcpDenyDecision("OAP server unreachable")
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusUnauthorized {
+		return mcpDenyDecision("authentication failed")
+	}
+
+	var dec model.AuthorizationDecision
+	if err := json.Unmarshal(respBody, &dec); err != nil {
+		p.logger.Printf("ERROR: parsing OAP response: %v", err)
+		return mcpDenyDecision("invalid OAP response")
+	}
+	return dec
+}
+
+// mcpDenyDecision creates a fail-closed deny decision.
+func mcpDenyDecision(reason string) model.AuthorizationDecision {
+	return model.AuthorizationDecision{
+		Decision: model.DecisionDeny,
+		Reason:   reason,
+	}
+}
+
+// extractMCPBearer extracts the Bearer token from the Authorization header.
+func extractMCPBearer(r *http.Request) string {
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		return auth[7:]
+	}
+	return ""
 }
 
 // fetchUpstreamTools calls the upstream MCP server to get the tools list.

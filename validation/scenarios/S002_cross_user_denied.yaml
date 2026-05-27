@@ -1,0 +1,29 @@
+id: S002
+name: cross-user-ticket-access-denied
+description: >
+  Alice asks the agent to summarize Bob's ticket T-200.
+  T-200 is assigned to Bob, not Alice. Should be denied by resource ownership.
+idpProviders:
+  - keycloak
+actor:
+  user: alice@company.test
+  password: alice123
+agent:
+  id: agent://support/ticket-assistant
+task:
+  type: deterministic
+  action: ticket.read
+  resource:
+    type: support.ticket
+    id: "T-200"
+expected:
+  decision: deny
+  noResourceDataReturned: true
+  audit:
+    required: true
+    contains:
+      agent_id: agent://support/ticket-assistant
+      actor_id: alice@company.test
+      action: ticket.read
+      resource_id: "T-200"
+      decision: deny

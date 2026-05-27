@@ -26,7 +26,7 @@ Quick start::
         return {"id": invoice_id}
 """
 
-from open_agent_policy.client import OAPClient
+from open_agent_policy.client import OAPClient, Decision, Grant
 from open_agent_policy.decorators import protect
 from open_agent_policy.errors import (
     OAPError,
@@ -39,6 +39,8 @@ __version__ = "0.1.0a1"
 
 __all__ = [
     "OAPClient",
+    "Decision",
+    "Grant",
     "protect",
     "OAPError",
     "PermissionDeniedError",

@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +10,7 @@ import (
 
 	"github.com/proishan11/open-agent-policy/engine/audit"
 	"github.com/proishan11/open-agent-policy/engine/model"
-	"github.com/proishan11/open-agent-policy/engine/registry"
+	"github.com/proishan11/open-agent-policy/engine/store/memory"
 )
 
 // setupProxy creates a proxy with a fake upstream MCP server.
@@ -46,13 +47,14 @@ func setupProxy(t *testing.T, observe bool) (*MCPProxy, *httptest.Server, *audit
 		}
 	}))
 
-	store := registry.NewStore()
-	store.RegisterAgent(&model.Agent{
+	ctx := context.Background()
+	s := memory.New()
+	s.RegisterAgent(ctx, &model.Agent{
 		Metadata: model.Metadata{Name: "ticket-assistant", Namespace: "support"},
 		Spec:     model.AgentSpec{Owner: "support-team", Type: "chat_agent", RiskTier: "medium", Capabilities: []string{"read_ticket", "send_message"}},
 		Status:   model.AgentStatus{State: model.AgentStateActive},
 	})
-	store.AddPolicy(&model.AgentPolicy{
+	s.AddPolicy(ctx, &model.AgentPolicy{
 		Metadata: model.Metadata{Name: "support-policy", Namespace: "support"},
 		Spec: model.PolicySpec{
 			Subject: model.PolicySubject{Agent: "agent://support/ticket-assistant"},
@@ -68,7 +70,7 @@ func setupProxy(t *testing.T, observe bool) (*MCPProxy, *httptest.Server, *audit
 		AgentID:     "agent://support/ticket-assistant",
 		UpstreamURL: upstream.URL,
 		ObserveMode: observe,
-		Store:       store,
+		Store:       s,
 		AuditSink:   sink,
 	})
 
@@ -189,5 +191,98 @@ func TestHealth(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&result)
 	if result["status"] != "healthy" {
 		t.Errorf("health status = %v, want healthy", result["status"])
+	}
+}
+
+// --- Remote auth mode tests ---
+
+func TestToolsCallRemoteAllow(t *testing.T) {
+	// Fake OAP server that allows read_ticket
+	oapServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(model.AuthorizationDecision{
+			Decision:  model.DecisionAllow,
+			Reason:    "allowed by policy",
+			PolicyIDs: []string{"support-policy"},
+		})
+	}))
+	defer oapServer.Close()
+
+	// Fake upstream MCP server
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req MCPRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		result, _ := json.Marshal(map[string]string{"status": "ok"})
+		resp := MCPResponse{JSONRPC: "2.0", ID: req.ID, Result: result}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer upstream.Close()
+
+	p := New(Config{
+		AgentID:      "agent://support/ticket-assistant",
+		UpstreamURL:  upstream.URL,
+		OAPServerURL: oapServer.URL,
+	})
+
+	resp := mcpCall(t, p.Handler(), "tools/call", ToolCallParams{
+		Name: "read_ticket",
+	})
+
+	if resp.Error != nil {
+		t.Fatalf("expected allow, got error: %s", resp.Error.Message)
+	}
+}
+
+func TestToolsCallRemoteDeny(t *testing.T) {
+	oapServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(model.AuthorizationDecision{
+			Decision: model.DecisionDeny,
+			Reason:   "policy denied delete_ticket",
+		})
+	}))
+	defer oapServer.Close()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("upstream should not be called for denied tool calls")
+	}))
+	defer upstream.Close()
+
+	p := New(Config{
+		AgentID:      "agent://support/ticket-assistant",
+		UpstreamURL:  upstream.URL,
+		OAPServerURL: oapServer.URL,
+	})
+
+	resp := mcpCall(t, p.Handler(), "tools/call", ToolCallParams{
+		Name: "delete_ticket",
+	})
+
+	if resp.Error == nil {
+		t.Fatal("expected deny error, got success")
+	}
+	if resp.Error.Code != -32001 {
+		t.Errorf("error code = %d, want -32001", resp.Error.Code)
+	}
+}
+
+func TestToolsCallRemoteOAPDown(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("upstream should not be called when OAP is unreachable")
+	}))
+	defer upstream.Close()
+
+	p := New(Config{
+		AgentID:      "agent://support/ticket-assistant",
+		UpstreamURL:  upstream.URL,
+		OAPServerURL: "http://localhost:59999",
+	})
+
+	resp := mcpCall(t, p.Handler(), "tools/call", ToolCallParams{
+		Name: "read_ticket",
+	})
+
+	if resp.Error == nil {
+		t.Fatal("expected error when OAP is unreachable")
 	}
 }

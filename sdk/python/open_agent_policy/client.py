@@ -49,6 +49,31 @@ from open_agent_policy.errors import (
 
 
 @dataclass
+class Grant:
+    """A scoped, time-bound grant token issued by OAP on allow decisions.
+
+    Attributes:
+        grant_id: Unique identifier for this grant.
+        token: Signed JWT grant token to present to the resource API.
+        expires_in_seconds: How long the grant is valid.
+    """
+
+    grant_id: str = ""
+    token: str = ""
+    expires_in_seconds: int = 0
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> Grant | None:
+        if not data:
+            return None
+        return cls(
+            grant_id=data.get("grant_id", ""),
+            token=data.get("token", ""),
+            expires_in_seconds=data.get("expires_in_seconds", 0),
+        )
+
+
+@dataclass
 class Decision:
     """The result of an authorization evaluation.
 
@@ -61,6 +86,7 @@ class Decision:
         constraints: Constraints applied to the allowed action (if any).
         obligations: Requirements the caller must fulfil.
         approval: Approval details if decision is require_approval.
+        grant: Scoped grant token (only present on allow decisions).
         trace: Evaluation trace (only present in simulate mode).
     """
 
@@ -72,6 +98,7 @@ class Decision:
     constraints: dict[str, Any] = field(default_factory=dict)
     obligations: dict[str, Any] = field(default_factory=dict)
     approval: dict[str, Any] = field(default_factory=dict)
+    grant: Grant | None = None
     trace: list[dict[str, Any]] = field(default_factory=list)
 
     @property
@@ -101,6 +128,7 @@ class Decision:
             constraints=data.get("constraints") or {},
             obligations=data.get("obligations") or {},
             approval=data.get("approval") or {},
+            grant=Grant.from_dict(data.get("grant")),
             trace=data.get("trace") or [],
         )
 
@@ -128,6 +156,7 @@ class OAPClient:
         timeout: float = 5.0,
         agent_id: str = "",
         headers: dict[str, str] | None = None,
+        session_token: str = "",
     ) -> None:
         self.server_url = server_url.rstrip("/")
         self.mode = mode
@@ -135,10 +164,14 @@ class OAPClient:
         self.oapctl_path = oapctl_path
         self.timeout = timeout
         self.default_agent_id = agent_id
+        self.session_token = session_token
+        auth_headers = dict(headers or {})
+        if session_token:
+            auth_headers["Authorization"] = f"Bearer {session_token}"
         self._client = httpx.Client(
             base_url=self.server_url,
             timeout=timeout,
-            headers=headers or {},
+            headers=auth_headers,
         )
 
     def close(self) -> None:
@@ -376,6 +409,97 @@ class OAPClient:
                 raw = line.split(":", 1)[1].strip().strip("[]")
                 decision.policy_ids = [p.strip() for p in raw.split() if p.strip()]
         return decision
+
+
+    # --- Session & run management ---
+
+    def create_session(
+        self,
+        agent_id: str = "",
+        runtime_token: str = "",
+        environment: str = "",
+    ) -> dict[str, Any]:
+        """Create a runtime session by proving agent identity.
+
+        Args:
+            agent_id: Agent identifier.
+            runtime_token: OIDC/JWT token from the identity provider.
+            environment: Deployment environment name.
+
+        Returns:
+            Session dict with session_id, agent_id, status, expires_in.
+        """
+        body: dict[str, Any] = {
+            "agent_id": agent_id or self.default_agent_id,
+            "runtime_token": runtime_token,
+        }
+        if environment:
+            body["environment"] = environment
+
+        resp = self._client.post("/v1/runtime/session", json=body)
+        if resp.status_code != 201:
+            raise ServerError(
+                message="session creation failed",
+                status_code=resp.status_code,
+                response_body=resp.text,
+            )
+        data = resp.json()
+
+        # Auto-set session token for subsequent calls
+        self.session_token = data["session_id"]
+        self._client.headers["Authorization"] = f"Bearer {self.session_token}"
+
+        return data
+
+    def create_run(
+        self,
+        session_id: str = "",
+        actor_type: str = "",
+        actor_id: str = "",
+        purpose: str = "",
+    ) -> dict[str, Any]:
+        """Create a run (task/execution) within an active session.
+
+        Args:
+            session_id: Session ID (defaults to current session).
+            actor_type: Type of actor (user, service).
+            actor_id: Actor identifier.
+            purpose: Description of the run's purpose.
+
+        Returns:
+            Run dict with run_id, session_id, agent_id, status.
+        """
+        body: dict[str, Any] = {
+            "session_id": session_id or self.session_token,
+        }
+        if actor_type or actor_id:
+            body["actor"] = {"type": actor_type, "id": actor_id}
+        if purpose:
+            body["purpose"] = purpose
+
+        resp = self._client.post("/v1/runs", json=body)
+        if resp.status_code != 201:
+            raise ServerError(
+                message="run creation failed",
+                status_code=resp.status_code,
+                response_body=resp.text,
+            )
+        return resp.json()
+
+    def validate_grant(self, grant_token: str) -> dict[str, Any]:
+        """Validate a grant token (resource-side verification).
+
+        Args:
+            grant_token: The signed JWT grant token to validate.
+
+        Returns:
+            Dict with valid, agent_id, action, resource_type, etc.
+        """
+        resp = self._client.post(
+            "/v1/grants/validate",
+            json={"grant_token": grant_token},
+        )
+        return resp.json()
 
 
 def _strip_ansi(text: str) -> str:

@@ -1,0 +1,26 @@
+id: S012
+name: unknown-agent-denied
+description: >
+  Unregistered agent (agent://unknown/rogue-agent) attempts to read a ticket.
+  Should be denied because the agent is not registered.
+idpProviders:
+  - keycloak
+actor:
+  user: alice@company.test
+  password: alice123
+agent:
+  id: agent://unknown/rogue-agent
+task:
+  type: deterministic
+  action: ticket.read
+  resource:
+    type: support.ticket
+    id: "T-100"
+expected:
+  decision: deny
+  audit:
+    required: true
+    contains:
+      agent_id: agent://unknown/rogue-agent
+      decision: deny
+      reasonContains: unregistered

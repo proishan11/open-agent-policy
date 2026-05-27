@@ -1,0 +1,27 @@
+id: S004
+name: restricted-customer-denied
+description: >
+  Alice asks the agent to summarize data for restricted customer C-900.
+  Highly restricted classification should deny access.
+idpProviders:
+  - keycloak
+actor:
+  user: alice@company.test
+  password: alice123
+agent:
+  id: agent://support/ticket-assistant
+task:
+  type: deterministic
+  action: customer.read
+  resource:
+    type: crm.customer
+    id: "C-900"
+    classification: highly_restricted
+expected:
+  decision: deny
+  noResourceDataReturned: true
+  audit:
+    required: true
+    contains:
+      decision: deny
+      reasonContains: restricted

@@ -1,0 +1,31 @@
+id: S013
+name: grant-replay-denied
+description: >
+  Obtain a valid grant for ticket:T-100 and attempt to reuse it for
+  ticket:T-200, customer:C-900, a different actor, and a different agent.
+  All replays should be denied.
+idpProviders:
+  - keycloak
+actor:
+  user: alice@company.test
+  password: alice123
+agent:
+  id: agent://support/ticket-assistant
+task:
+  type: deterministic
+  grant_for:
+    action: ticket.read
+    resource_id: "T-100"
+  replay_attempts:
+    - resource_id: "T-200"
+      expected: deny
+    - resource_id: "C-900"
+      expected: deny
+    - actor_id: bob@company.test
+      expected: deny
+    - agent_id: agent://unknown/rogue-agent
+      expected: deny
+expected:
+  all_replays_denied: true
+  audit:
+    required: true

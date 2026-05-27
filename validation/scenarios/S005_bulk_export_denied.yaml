@@ -1,0 +1,26 @@
+id: S005
+name: bulk-export-denied
+description: >
+  Agent attempts to bulk export all customer tickets.
+  Bulk export action is explicitly denied.
+idpProviders:
+  - keycloak
+actor:
+  user: alice@company.test
+  password: alice123
+agent:
+  id: agent://support/ticket-assistant
+task:
+  type: deterministic
+  action: ticket.bulk_export
+  resource:
+    type: support.ticket
+expected:
+  decision: deny
+  noResourceDataReturned: true
+  audit:
+    required: true
+    contains:
+      action: ticket.bulk_export
+      decision: deny
+      reasonContains: "exfiltration"

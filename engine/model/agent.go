@@ -54,12 +54,40 @@ type AgentSpec struct {
 	// Capabilities lists what the agent can do at a high level.
 	Capabilities []string `json:"capabilities" yaml:"capabilities"`
 
+	// IdentityBindings maps verifiable runtime identities to this agent.
+	// OAP checks the runtime token's issuer+subject against these bindings
+	// to cryptographically prove which agent a workload is.
+	IdentityBindings []IdentityBinding `json:"identityBindings,omitempty" yaml:"identityBindings,omitempty"`
+
 	// Runtime describes the agent's deployment context.
 	Runtime *AgentRuntime `json:"runtime,omitempty" yaml:"runtime,omitempty"`
 
 	// Tools lists the tools this agent declares it uses,
 	// with the action and resource each tool maps to.
 	Tools []AgentToolBinding `json:"tools,omitempty" yaml:"tools,omitempty"`
+}
+
+// IdentityBinding maps a verifiable runtime identity to this agent.
+// When an agent workload presents a token, OAP verifies the token's
+// issuer and subject match a registered binding before trusting the identity.
+type IdentityBinding struct {
+	// Type is the identity mechanism.
+	// One of: "oidc_client", "kubernetes_service_account", "spiffe", "mtls".
+	Type string `json:"type" yaml:"type"`
+
+	// Provider is a human-readable name (e.g., "keycloak", "okta", "azure-ad").
+	Provider string `json:"provider,omitempty" yaml:"provider,omitempty"`
+
+	// Issuer is the expected token issuer URL.
+	Issuer string `json:"issuer" yaml:"issuer"`
+
+	// Subject is the expected token subject or authorized party.
+	// For OIDC client_credentials: the client_id or azp claim.
+	// For K8s: "system:serviceaccount:<ns>:<name>".
+	Subject string `json:"subject" yaml:"subject"`
+
+	// Audience is the expected audience claim (optional).
+	Audience string `json:"audience,omitempty" yaml:"audience,omitempty"`
 }
 
 // AgentRuntime describes the agent's deployment environment.
@@ -73,9 +101,9 @@ type AgentRuntime struct {
 
 // AgentToolBinding maps a tool name to an action and resource pattern.
 type AgentToolBinding struct {
-	Name     string              `json:"name" yaml:"name"`
-	Action   string              `json:"action" yaml:"action"`
-	Resource *AgentToolResource  `json:"resource,omitempty" yaml:"resource,omitempty"`
+	Name     string             `json:"name" yaml:"name"`
+	Action   string             `json:"action" yaml:"action"`
+	Resource *AgentToolResource `json:"resource,omitempty" yaml:"resource,omitempty"`
 }
 
 // AgentToolResource specifies what resource type a tool operates on

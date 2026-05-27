@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/proishan11/open-agent-policy/engine/model"
-	"github.com/proishan11/open-agent-policy/engine/registry"
+	"github.com/proishan11/open-agent-policy/engine/store/memory"
 	"gopkg.in/yaml.v3"
 )
 
@@ -46,18 +46,19 @@ func loadConformanceCase(t *testing.T, path string) conformanceCase {
 // setupEvaluator creates a store, registers agents and policies from the test
 // case, and returns an evaluator ready for evaluation.
 func setupEvaluator(tc conformanceCase) *Evaluator {
-	store := registry.NewStore()
+	ctx := context.Background()
+	s := memory.New()
 	for i := range tc.Agents {
 		agent := tc.Agents[i]
 		if agent.Status.State == "" {
 			agent.Status.State = model.AgentStateActive
 		}
-		store.RegisterAgent(&agent)
+		s.RegisterAgent(ctx, &agent)
 	}
 	for i := range tc.Policies {
-		store.AddPolicy(&tc.Policies[i])
+		s.AddPolicy(ctx, &tc.Policies[i])
 	}
-	return New(store)
+	return New(s)
 }
 
 // conformancePath returns the absolute path to the conformance cases directory.
@@ -125,9 +126,9 @@ func TestConformanceSuite(t *testing.T) {
 // --- Individual tests for clarity ---
 
 func TestDenyUnregisteredAgent(t *testing.T) {
-	store := registry.NewStore()
+	s := memory.New()
 	// No agents registered, but add a policy that would allow if agent existed
-	store.AddPolicy(&model.AgentPolicy{
+	s.AddPolicy(context.Background(), &model.AgentPolicy{
 		Metadata: model.Metadata{Name: "allow-read", Namespace: "finance"},
 		Spec: model.PolicySpec{
 			Subject: model.PolicySubject{AllAgents: true},
@@ -137,7 +138,7 @@ func TestDenyUnregisteredAgent(t *testing.T) {
 		},
 	})
 
-	eval := New(store)
+	eval := New(s)
 	result := eval.Evaluate(context.Background(), model.AuthorizationRequest{
 		RequestID: "test-1",
 		Subject:   model.Subject{Type: "agent", AgentID: "agent://finance/ghost"},
@@ -153,15 +154,15 @@ func TestDenyUnregisteredAgent(t *testing.T) {
 }
 
 func TestDenyByDefault(t *testing.T) {
-	store := registry.NewStore()
-	store.RegisterAgent(&model.Agent{
+	s := memory.New()
+	s.RegisterAgent(context.Background(), &model.Agent{
 		Metadata: model.Metadata{Name: "data-agent", Namespace: "analytics"},
 		Spec:     model.AgentSpec{Owner: "data-team", Type: "workflow_agent", RiskTier: "medium", Capabilities: []string{"read"}},
 		Status:   model.AgentStatus{State: model.AgentStateActive},
 	})
 	// No policies
 
-	eval := New(store)
+	eval := New(s)
 	result := eval.Evaluate(context.Background(), model.AuthorizationRequest{
 		RequestID: "test-2",
 		Subject:   model.Subject{Type: "agent", AgentID: "agent://analytics/data-agent"},
@@ -177,15 +178,16 @@ func TestDenyByDefault(t *testing.T) {
 }
 
 func TestExplicitDenyOverridesAllow(t *testing.T) {
-	store := registry.NewStore()
-	store.RegisterAgent(&model.Agent{
+	ctx := context.Background()
+	s := memory.New()
+	s.RegisterAgent(ctx, &model.Agent{
 		Metadata: model.Metadata{Name: "invoice-reconciler", Namespace: "finance"},
 		Spec:     model.AgentSpec{Owner: "finance-team", Type: "workflow_agent", RiskTier: "medium", Capabilities: []string{"read", "delete"}},
 		Status:   model.AgentStatus{State: model.AgentStateActive},
 	})
 
 	// Policy that allows everything
-	store.AddPolicy(&model.AgentPolicy{
+	s.AddPolicy(ctx, &model.AgentPolicy{
 		Metadata: model.Metadata{Name: "allow-all", Namespace: "finance"},
 		Spec: model.PolicySpec{
 			Subject: model.PolicySubject{Agent: "agent://finance/invoice-reconciler"},
@@ -196,7 +198,7 @@ func TestExplicitDenyOverridesAllow(t *testing.T) {
 	})
 
 	// Policy that explicitly denies delete
-	store.AddPolicy(&model.AgentPolicy{
+	s.AddPolicy(ctx, &model.AgentPolicy{
 		Metadata: model.Metadata{Name: "deny-delete", Namespace: "finance"},
 		Spec: model.PolicySpec{
 			Subject: model.PolicySubject{Agent: "agent://finance/invoice-reconciler"},
@@ -206,7 +208,7 @@ func TestExplicitDenyOverridesAllow(t *testing.T) {
 		},
 	})
 
-	eval := New(store)
+	eval := New(s)
 	result := eval.Evaluate(context.Background(), model.AuthorizationRequest{
 		RequestID: "test-3",
 		Subject:   model.Subject{Type: "agent", AgentID: "agent://finance/invoice-reconciler"},
@@ -219,13 +221,14 @@ func TestExplicitDenyOverridesAllow(t *testing.T) {
 }
 
 func TestRevokedAgentDenied(t *testing.T) {
-	store := registry.NewStore()
-	store.RegisterAgent(&model.Agent{
+	ctx := context.Background()
+	s := memory.New()
+	s.RegisterAgent(ctx, &model.Agent{
 		Metadata: model.Metadata{Name: "old-agent", Namespace: "engineering"},
 		Spec:     model.AgentSpec{Owner: "eng-team", Type: "workflow_agent", RiskTier: "low", Capabilities: []string{"read"}},
 		Status:   model.AgentStatus{State: model.AgentStateRevoked},
 	})
-	store.AddPolicy(&model.AgentPolicy{
+	s.AddPolicy(ctx, &model.AgentPolicy{
 		Metadata: model.Metadata{Name: "allow-read", Namespace: "engineering"},
 		Spec: model.PolicySpec{
 			Subject: model.PolicySubject{Agent: "agent://engineering/old-agent"},
@@ -235,7 +238,7 @@ func TestRevokedAgentDenied(t *testing.T) {
 		},
 	})
 
-	eval := New(store)
+	eval := New(s)
 	result := eval.Evaluate(context.Background(), model.AuthorizationRequest{
 		RequestID: "test-4",
 		Subject:   model.Subject{Type: "agent", AgentID: "agent://engineering/old-agent"},

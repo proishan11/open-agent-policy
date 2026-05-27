@@ -1,0 +1,30 @@
+apiVersion: oap/v1alpha1
+kind: Agent
+metadata:
+  name: ticket-assistant
+  namespace: support
+spec:
+  owner: "group:support_platform"
+  type: chat_agent
+  riskTier: medium
+  description: >
+    Support operations agent that reads tickets, summarizes issues,
+    looks up customers, posts to Slack, creates escalation issues,
+    and updates ticket status. Governed by OAP policy.
+
+  identityBindings:
+    - type: oidc_client
+      provider: keycloak
+      issuer: "http://keycloak:8080/realms/oap-validation"
+      subject: "support-agent"
+
+  capabilities:
+    - ticket.read
+    - ticket.summarize
+    - customer.read
+    - message.send
+    - escalation.issue.create
+    - ticket.update
+  runtime:
+    framework: langchain
+    language: python

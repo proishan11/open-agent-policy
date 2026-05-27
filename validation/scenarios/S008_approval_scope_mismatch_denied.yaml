@@ -1,0 +1,29 @@
+id: S008
+name: approval-scope-mismatch-denied
+description: >
+  Charlie approves posting to #external-customer-updates for ticket T-100.
+  Agent attempts to use the approval to post data from ticket T-200.
+  Approval scope mismatch should deny.
+idpProviders:
+  - keycloak
+actor:
+  user: alice@company.test
+  password: alice123
+agent:
+  id: agent://support/ticket-assistant
+task:
+  type: deterministic
+  action: message.send
+  resource:
+    type: slack.channel
+    id: "slack:#external-customer-updates"
+  approval_context:
+    approved_resource_id: "T-100"
+    attempted_resource_id: "T-200"
+expected:
+  decision: deny
+  audit:
+    required: true
+    contains:
+      decision: deny
+      reasonContains: scope

@@ -1,0 +1,67 @@
+apiVersion: oap/v1alpha1
+kind: AgentPolicy
+metadata:
+  name: support-ticket-agent-policy
+  namespace: support
+spec:
+  subject:
+    agent: "agent://support/ticket-assistant"
+
+  rules:
+    # Allow reading and summarizing assigned tickets with constraints
+    - effect: allow
+      actions:
+        - ticket.read
+        - ticket.summarize
+      constraints:
+        max_records: 25
+        redact_fields:
+          - payment_card
+          - government_id
+          - api_key
+          - access_token
+
+    # Allow reading customer data with redaction
+    - effect: allow
+      actions:
+        - customer.read
+      constraints:
+        redact_fields:
+          - tax_identifier
+          - billing_account
+          - bank_account
+
+    # Allow posting to internal support channel
+    - effect: allow
+      actions:
+        - message.send
+
+    # Allow creating escalation issues
+    - effect: allow
+      actions:
+        - escalation.issue.create
+
+    # Allow updating ticket status
+    - effect: allow
+      actions:
+        - ticket.update
+      constraints:
+        allowed_fields:
+          - status
+          - priority
+          - assignee
+
+    # Explicitly deny bulk exports
+    - effect: deny
+      actions:
+        - ticket.bulk_export
+        - customer.bulk_export
+      reason: "Bulk export is prohibited — data exfiltration risk"
+
+    # Explicitly deny destructive actions
+    - effect: deny
+      actions:
+        - customer.delete
+        - policy.modify
+        - repository.settings.modify
+      reason: "Destructive or administrative actions are prohibited"

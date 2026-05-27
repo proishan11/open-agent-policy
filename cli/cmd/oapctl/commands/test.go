@@ -11,7 +11,7 @@ import (
 
 	"github.com/proishan11/open-agent-policy/engine/evaluator"
 	"github.com/proishan11/open-agent-policy/engine/model"
-	"github.com/proishan11/open-agent-policy/engine/registry"
+	"github.com/proishan11/open-agent-policy/engine/store/memory"
 	"gopkg.in/yaml.v3"
 )
 
@@ -103,19 +103,19 @@ func runConformanceSuite(casesDir string) error {
 		}
 
 		// Set up evaluator with this case's agents and policies
-		store := registry.NewStore()
+		s := memory.New()
 		for i := range tc.Agents {
 			agent := tc.Agents[i]
 			if agent.Status.State == "" {
 				agent.Status.State = model.AgentStateActive
 			}
-			store.RegisterAgent(&agent)
+			s.RegisterAgent(context.Background(), &agent)
 		}
 		for i := range tc.Policies {
-			store.AddPolicy(&tc.Policies[i])
+			s.AddPolicy(context.Background(), &tc.Policies[i])
 		}
 
-		eval := evaluator.New(store)
+		eval := evaluator.New(s)
 		result := eval.Evaluate(context.Background(), tc.Request)
 
 		// Check decision

@@ -6,19 +6,19 @@ import (
 	"time"
 
 	"github.com/proishan11/open-agent-policy/engine/model"
-	"github.com/proishan11/open-agent-policy/engine/registry"
+	"github.com/proishan11/open-agent-policy/engine/store"
 )
 
 // Evaluator is the policy decision point (PDP). It holds a reference to the
-// registry and evaluates authorization requests against registered agents and
+// store and evaluates authorization requests against registered agents and
 // policies.
 type Evaluator struct {
-	store *registry.Store
+	store store.Store
 }
 
-// New creates an Evaluator backed by the given registry store.
-func New(store *registry.Store) *Evaluator {
-	return &Evaluator{store: store}
+// New creates an Evaluator backed by the given store.
+func New(s store.Store) *Evaluator {
+	return &Evaluator{store: s}
 }
 
 // TraceStep records one step of the evaluation for simulation/explain mode.
@@ -66,7 +66,13 @@ func (e *Evaluator) Evaluate(ctx context.Context, req model.AuthorizationRequest
 	trace = append(trace, TraceStep{Step: "validate_request", Result: "pass", Detail: "request is valid"})
 
 	// Step 2: Verify agent identity — is the agent registered and active?
-	agent := e.store.GetAgent(req.Subject.AgentID)
+	agent, err := e.store.GetAgent(ctx, req.Subject.AgentID)
+	if err != nil {
+		trace = append(trace, TraceStep{Step: "verify_agent", Result: "fail", Detail: "store error: " + err.Error()})
+		baseDec.Decision = model.DecisionDeny
+		baseDec.Reason = "internal error (fail-closed)"
+		return EvalResult{Decision: baseDec, Trace: trace}
+	}
 	if agent == nil {
 		trace = append(trace, TraceStep{Step: "verify_agent", Result: "fail", Detail: "agent not registered: " + req.Subject.AgentID})
 		baseDec.Decision = model.DecisionDeny
@@ -90,7 +96,13 @@ func (e *Evaluator) Evaluate(ctx context.Context, req model.AuthorizationRequest
 	trace = append(trace, TraceStep{Step: "verify_agent", Result: "pass", Detail: "agent registered and active"})
 
 	// Step 3: Find matching policies
-	policies := e.store.PoliciesForAgent(agent)
+	policies, err := e.store.PoliciesForAgent(ctx, agent)
+	if err != nil {
+		trace = append(trace, TraceStep{Step: "find_policies", Result: "fail", Detail: "store error: " + err.Error()})
+		baseDec.Decision = model.DecisionDeny
+		baseDec.Reason = "internal error (fail-closed)"
+		return EvalResult{Decision: baseDec, Trace: trace}
+	}
 	if len(policies) == 0 {
 		// Deny-by-default: no policies means no access
 		trace = append(trace, TraceStep{Step: "find_policies", Result: "fail", Detail: "no matching policies found"})

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/proishan11/open-agent-policy/engine/model"
-	"github.com/proishan11/open-agent-policy/engine/registry"
+	"github.com/proishan11/open-agent-policy/engine/store"
 )
 
 // Bundle is a snapshot of agents and policies for distribution to embedded evaluators.
@@ -32,18 +32,18 @@ type Bundle struct {
 	Policies []*model.AgentPolicy `json:"policies"`
 }
 
-// Server serves policy bundles from a registry store.
+// Server serves policy bundles from a store.
 type Server struct {
-	store  *registry.Store
+	store  store.Store
 	mu     sync.RWMutex
 	cached *Bundle
 	logger *log.Logger
 }
 
 // NewServer creates a bundle server.
-func NewServer(store *registry.Store) *Server {
+func NewServer(s store.Store) *Server {
 	return &Server{
-		store:  store,
+		store:  s,
 		logger: log.New(log.Writer(), "[bundle-server] ", log.LstdFlags),
 	}
 }
@@ -67,8 +67,9 @@ func (s *Server) Handler() http.HandlerFunc {
 
 // Generate creates a bundle from the current store state.
 func (s *Server) Generate() *Bundle {
-	agents := s.store.ListAgents()
-	policies := s.store.ListPolicies()
+	ctx := context.Background()
+	agents, _ := s.store.ListAgents(ctx)
+	policies, _ := s.store.ListPolicies(ctx)
 
 	bundle := &Bundle{
 		Version:   "v1",
@@ -93,8 +94,8 @@ type Client struct {
 	// ServerURL is the bundle server URL (e.g., http://oap-server:8080/v1/bundles).
 	ServerURL string
 
-	// Store is the local registry store to update.
-	Store *registry.Store
+	// Store is the local store to update.
+	Store store.Store
 
 	// Interval is the polling interval (default: 30 seconds).
 	Interval time.Duration
@@ -105,13 +106,13 @@ type Client struct {
 }
 
 // NewClient creates a bundle sync client.
-func NewClient(serverURL string, store *registry.Store, interval time.Duration) *Client {
+func NewClient(serverURL string, s store.Store, interval time.Duration) *Client {
 	if interval == 0 {
 		interval = 30 * time.Second
 	}
 	return &Client{
 		ServerURL: serverURL,
-		Store:     store,
+		Store:     s,
 		Interval:  interval,
 		logger:    log.New(log.Writer(), "[bundle-client] ", log.LstdFlags),
 		stopCh:    make(chan struct{}),
@@ -182,10 +183,14 @@ func (c *Client) Sync(ctx context.Context) error {
 
 	// Update local store
 	for _, agent := range bundle.Agents {
-		c.Store.RegisterAgent(agent)
+		if err := c.Store.RegisterAgent(ctx, agent); err != nil {
+			c.logger.Printf("WARNING: failed to register agent %s: %v", agent.ID(), err)
+		}
 	}
 	for _, policy := range bundle.Policies {
-		c.Store.AddPolicy(policy)
+		if err := c.Store.AddPolicy(ctx, policy); err != nil {
+			c.logger.Printf("WARNING: failed to add policy %s: %v", policy.ID(), err)
+		}
 	}
 
 	c.lastETag = bundle.ETag
