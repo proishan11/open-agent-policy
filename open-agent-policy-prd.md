@@ -1795,3 +1795,28 @@ It helps teams answer:
 
 Open Agent Policy is designed for agent runtimes, MCP servers, API gateways, SaaS integrations, internal tools, cloud resources, and enterprise AI platforms.
 ```
+
+
+## Validation and Test Strategy
+
+Open Agent Policy must be validated across three dimensions:
+
+1. Problem validation:
+   - Are agent teams over-permissioning agents today?
+   - Do security teams need identity, audit, revocation, and policy for agents?
+   - Do enterprises need vendor-neutral enforcement?
+
+2. Use-case validation:
+   - Support ticket agent
+   - Finance invoice agent
+   - Deployment agent
+   - Coding/DevOps agent
+   - MCP tool agent
+
+3. Technical validation:
+   - Policy conformance tests
+   - Golden decision tests
+   - SDK and gateway integration tests
+   - Security abuse tests
+   - Audit completeness tests
+   - Developer-experience tests
