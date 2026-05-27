@@ -96,9 +96,8 @@ jobs:
           PKGS=$(go list ./... | grep -v /cmd/ | while read pkg; do
             dir=$(go list -f '{{.Dir}}' "$pkg")
             if ls "$dir"/*_test.go >/dev/null 2>&1; then echo "$pkg"; fi
-          done | tr '\n' ',')
-          PKGS=${PKGS%,}
-          go test -coverprofile=coverage.out -coverpkg="$PKGS" $PKGS
+          done)
+          go test -coverprofile=coverage.out $PKGS
 
       - name: Upload Go coverage
         if: always()
