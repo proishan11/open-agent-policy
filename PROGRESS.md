@@ -203,3 +203,13 @@
 
 ### Documentation
 - [x] doc.go for identity and bundle packages
+- [x] docs/flows/agent-onboarding.md — Mermaid sequence diagram
+- [x] docs/flows/runtime-authorization.md — Mermaid sequence diagram
+- [x] docs/flows/delegation.md — Mermaid sequence diagram
+- [x] docs/flows/approval.md — Mermaid sequence diagram
+- [x] docs/flows/revocation.md — Mermaid sequence diagram
+
+### Demos
+- [x] demos/demo-03-python-sdk/demo.py — SDK demo (decisions, @protect, LangChain)
+- [x] demos/demo-04-mcp-proxy/demo.sh — Proxy + gateway + JWT tests
+- [x] demos/demo-05-production-setup/demo.sh — Identity, bundle, security, deploy
