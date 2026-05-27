@@ -89,7 +89,16 @@ jobs:
       - name: Run Go tests
         run: |
           go test -v -race ./...
-          go test -coverprofile=coverage.out $(go list ./... | grep -v /cmd/)
+
+      - name: Generate Go coverage
+        run: |
+          # Only cover packages that have test files (avoids covdata error)
+          PKGS=$(go list ./... | grep -v /cmd/ | while read pkg; do
+            dir=$(go list -f '{{.Dir}}' "$pkg")
+            if ls "$dir"/*_test.go >/dev/null 2>&1; then echo "$pkg"; fi
+          done | tr '\n' ',')
+          PKGS=${PKGS%,}
+          go test -coverprofile=coverage.out -coverpkg="$PKGS" $PKGS
 
       - name: Upload Go coverage
         if: always()
