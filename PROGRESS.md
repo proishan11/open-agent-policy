@@ -136,7 +136,35 @@
 - [x] engine/audit/sink_test.go — MemorySink, JSONLSink, invalid paths
 
 ## Milestone 4: MCP Proxy + HTTP Gateway
-_Not started_
+
+### MCP Proxy (proxy/)
+- [x] JSON-RPC 2.0 MCP protocol handler
+- [x] tools/list filtering — only shows tools the agent is allowed to use
+- [x] tools/call authorization — deny returns MCP error (-32001)
+- [x] Observe mode — logs decisions without blocking
+- [x] Upstream tool caching
+- [x] Audit event emission for every tool call
+- [x] 5 integration tests (initialize, allow, deny, observe, health)
+
+### HTTP Gateway (gateway/)
+- [x] HTTP reverse proxy with policy enforcement
+- [x] Route resolution — explicit routes, prefix match, or derived from method+path
+- [x] Agent ID override via X-OAP-Agent-ID header
+- [x] Structured 403 responses with policy IDs and reason
+- [x] Observe mode — logs without blocking
+- [x] Audit event emission
+- [x] 6 integration tests (allow, deny, observe, health, route resolution, agent override)
+
+### JWT Grant Issuance (engine/grant/)
+- [x] HMAC-SHA256 signed JWT grants with OAP-specific claims
+- [x] Claims encode: agent, action, decision, constraints, expiry
+- [x] Verify with expiry and signature checks
+- [x] 5 tests (issue+verify, expired, tampered, wrong key, invalid format)
+
+### Documentation
+- [x] proxy/README.md — Purpose, architecture, data flow, config
+- [x] gateway/README.md — Purpose, architecture, route resolution, config
+- [x] doc.go for proxy, gateway, grant packages
 
 ## Milestone 5: Production Readiness
 _Not started_

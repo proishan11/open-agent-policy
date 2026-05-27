@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Error hierarchy (`PermissionDeniedError`, `ApprovalRequiredError`, `ServerError`)
   - 32 pytest tests passing
 - Go test coverage for all engine packages (model, registry, audit)
+- MCP proxy (`proxy/`) — intercepts tools/list and tools/call with OAP authorization
+- HTTP gateway (`gateway/`) — reverse proxy with route-to-action mapping and policy enforcement
+- Observe mode for proxy and gateway (log-only, no blocking)
+- JWT grant issuance (`engine/grant/`) — HMAC-SHA256 signed grants with OAP claims
 - `make venv` for Python virtual environment setup
 - Project infrastructure:
   - Pre-commit hooks (conventional commits, gofmt, ruff, gitleaks)
