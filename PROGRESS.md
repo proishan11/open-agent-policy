@@ -213,3 +213,34 @@
 - [x] demos/demo-03-python-sdk/demo.py — SDK demo (decisions, @protect, LangChain)
 - [x] demos/demo-04-mcp-proxy/demo.sh — Proxy + gateway + JWT tests
 - [x] demos/demo-05-production-setup/demo.sh — Identity, bundle, security, deploy
+
+---
+
+## Milestone 6: Enterprise Identity & Storage — IN PROGRESS
+
+### Pluggable Policy Backends (OPA + Cedar)
+- [x] `engine/evaluator/backend/` — Backend interface
+- [x] `engine/evaluator/backend/opa.go` — OPA backend (REST, fail-closed/open)
+- [x] `engine/evaluator/backend/cedar.go` — Cedar backend (entity mapping, PolicyStoreID)
+- [x] 15 backend tests passing
+- [x] `docs/adr/004-pluggable-policy-backend.md` — design decision
+
+### Production OIDC Verifier
+- [x] `engine/identity/oidc/verifier.go` — Real JWKS discovery + RSA/EC signature verification
+- [x] `engine/identity/oidc/providers.go` — Provider helpers (Keycloak, Okta, Azure AD, Google, Cognito, Auth0, PingIdentity, OneLogin, GenericOIDC)
+- [x] 21 OIDC tests (real RSA keys, fake IDP server, key rotation, alg:none rejection)
+- [x] OpenID Connect discovery (`.well-known/openid-configuration`)
+- [x] Clock skew tolerance, required claims, audience array support
+
+### Store Interface + Backends
+- [x] `engine/store/store.go` — Pluggable Store interface (context-aware, error-returning)
+- [x] `engine/store/memory/` — In-memory implementation (8 tests)
+- [x] `engine/store/postgres/` — PostgreSQL implementation (pgxpool, JSONB, auto-migration)
+- [x] `engine/store/postgres/migrations.go` — Schema v1 (agents, policies, resources, tools, audit, indexes)
+- [x] Postgres integration tests (skip when no DB)
+- [x] Enterprise roadmap updated: Redis marked optional, storage tiers clarified
+
+### Pending
+- [ ] Wire new store.Store interface into evaluator + server (replace registry.Store)
+- [ ] docker-compose.enterprise.yml with Postgres + Keycloak
+- [ ] ADR: JWKS rotation and caching strategy

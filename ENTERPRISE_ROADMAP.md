@@ -105,31 +105,43 @@ Milestones 1–5 established the core engine, SDK, proxy, gateway, and foundatio
 
 ### 6.2 Database-Backed Storage
 
-| Store | Backend | Use Case |
+**Storage tiers (progressive — deploy only what you need):**
+
+| Tier | Backend | When to Use |
 |---|---|---|
-| **PostgresStore** | PostgreSQL | Agents, policies, audit events — primary production store |
-| **RedisCache** | Redis | Hot cache for agents/policies, session data, rate limits |
-| **GitPolicyStore** | Git repo | Policy-as-code, GitOps sync, PR-based policy changes |
+| **In-memory** (default) | `registry.Store` | Development, single-instance, <100 agents |
+| **PostgreSQL** (production) | `store/postgres` | Persistence, multi-instance, audit compliance |
+| **Redis** (optional, scale) | `store/redis` | >1k agents, <5ms p99 required, HA buffer |
+| **Git** (policy-as-code) | `store/git` | GitOps workflows, PR-based policy changes |
+
+> **Redis is optional.** In-memory → Postgres covers most deployments.
+> Add Redis only when you need sub-millisecond cache or resilience during Postgres blips.
 
 **Implementation deliverables:**
-- `engine/store/postgres/` — PostgreSQL implementation of RegistryStore:
+- `engine/store/` — `Store` interface (abstracts all backends):
+  - `GetAgent(id) → Agent`
+  - `PoliciesForAgent(agent) → []Policy`
+  - `RegisterAgent / UpdateAgent / DeleteAgent`
+  - `AddPolicy / UpdatePolicy / DeletePolicy`
+  - `ListAgents / ListPolicies` (with filtering)
+- `engine/store/memory/` — In-memory implementation (current `registry.Store`, extracted)
+- `engine/store/postgres/` — PostgreSQL implementation:
   - Schema migrations (golang-migrate)
   - Agent CRUD with version tracking
   - Policy CRUD with effective-date support
   - Audit event table with partitioning (by date)
   - Connection pooling (pgxpool)
   - Full-text search on policies and audit events
-- `engine/store/redis/` — Redis caching layer:
-  - Read-through cache for agent/policy lookups
+- `engine/store/redis/` — Optional Redis caching layer:
+  - Read-through cache wrapping any other store
   - Cache invalidation on write
   - Configurable TTL
-  - Circuit breaker for Redis failures (fall through to Postgres)
+  - Circuit breaker for Redis failures (fall through to underlying store)
 - `engine/store/git/` — Git-backed policy sync:
   - Clone/pull policy repository
   - Watch for changes (webhook or polling)
   - Branch-based policy environments (dev/staging/prod)
   - Policy diff and dry-run before apply
-- Store interface abstraction so all stores are swappable
 
 ### 6.3 Deliverables
 
