@@ -1,0 +1,173 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "milestone-*"]
+  pull_request:
+    branches: [main, "milestone-*"]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # ── Lint & Validate ──────────────────────────────────────────────────
+  lint:
+    name: Lint & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install Python dependencies
+        run: pip install jsonschema pyyaml openapi-spec-validator ruff
+
+      - name: Validate JSON Schemas
+        run: python -c "import json, sys; [json.load(open(f)) for f in sys.argv[1:]]" spec/v1alpha1/*.schema.json
+
+      - name: Validate OpenAPI spec
+        run: |
+          python -c "
+          from openapi_spec_validator import validate
+          from openapi_spec_validator.readers import read_from_filename
+          validate(read_from_filename('spec/openapi/oap-server.openapi.yaml')[0])
+          print('OpenAPI spec valid')
+          "
+
+      - name: Validate conformance test YAML
+        run: python -c "import yaml, sys; [yaml.safe_load(open(f)) for f in sys.argv[1:]]" conformance/cases/*.yaml
+
+      - name: Lint Python
+        run: ruff check sdk/python/ demos/ || true
+
+      - name: Lint Go
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: engine
+        continue-on-error: true
+
+  # ── Spec Conformance ─────────────────────────────────────────────────
+  conformance:
+    name: Spec Conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install jsonschema pyyaml
+
+      - name: Run conformance validation
+        run: python demos/demo-01-spec-and-conformance/validate.py
+
+  # ── Go Tests ─────────────────────────────────────────────────────────
+  test-go:
+    name: Go Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run Go tests
+        run: |
+          if [ -f engine/go.mod ]; then
+            cd engine && go test -v -race -coverprofile=coverage.out ./...
+          else
+            echo "No Go modules yet — skipping"
+          fi
+
+      - name: Upload Go coverage
+        if: hashFiles('engine/coverage.out') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: engine/coverage.out
+
+  # ── Python Tests ─────────────────────────────────────────────────────
+  test-python:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          pip install jsonschema pyyaml pytest pytest-cov
+          if [ -f sdk/python/requirements.txt ]; then
+            pip install -r sdk/python/requirements.txt
+          fi
+
+      - name: Run Python tests
+        run: |
+          if [ -d sdk/python/tests ]; then
+            cd sdk/python && pytest -v --cov=open_agent_policy
+          else
+            echo "No Python tests yet — skipping"
+          fi
+
+  # ── Security: Gitleaks ───────────────────────────────────────────────
+  gitleaks:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Security: CodeQL ─────────────────────────────────────────────────
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    strategy:
+      matrix:
+        language: [go, python]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  # ── Security: Dependency Review ──────────────────────────────────────
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
