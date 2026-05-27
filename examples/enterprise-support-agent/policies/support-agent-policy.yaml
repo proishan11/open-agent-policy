@@ -1,0 +1,82 @@
+apiVersion: oap/v1alpha1
+kind: AgentPolicy
+metadata:
+  name: support-agent-policy
+  namespace: support
+spec:
+  subject:
+    agent: "agent://support/support-ticket-agent"
+  rules:
+    # Allow reading tickets with a cap on results
+    - effect: allow
+      actions:
+        - tickets.read
+        - tickets.list
+      constraints:
+        max_records: 10
+        readonly: true
+
+    # Allow updating ticket status and priority
+    - effect: allow
+      actions:
+        - tickets.update
+      constraints:
+        allowed_fields:
+          - status
+          - priority
+          - assignee
+
+    # Allow reading customer data, but redact sensitive fields
+    - effect: allow
+      actions:
+        - customers.read
+      constraints:
+        readonly: true
+        redact_fields:
+          - ssn
+          - credit_card
+          - bank_account
+        max_records: 5
+
+    # Allow escalation only for P1 and P2 tickets
+    - effect: allow
+      actions:
+        - tickets.escalate
+      conditions:
+        priorityIn:
+          - P1
+          - P2
+
+    # Sending email to internal recipients is allowed
+    - effect: allow
+      actions:
+        - notifications.send_email
+      conditions:
+        recipientDomain: "@company.internal"
+
+    # Sending email to external recipients requires approval
+    - effect: require_approval
+      actions:
+        - notifications.send_email
+      conditions:
+        recipientExternal: true
+      approval:
+        approvers:
+          - "group:support-leads"
+        maxWaitSeconds: 1800
+        reason: "External email requires support lead approval"
+
+    # Explicitly deny ticket deletion — no exceptions
+    - effect: deny
+      actions:
+        - tickets.delete
+      reason: "Support agents may not delete tickets — compliance requirement"
+
+    # Explicitly deny access to billing/payment data
+    - effect: deny
+      actions:
+        - billing.read
+        - billing.update
+        - payments.read
+        - payments.refund
+      reason: "Support agents do not have access to billing systems"

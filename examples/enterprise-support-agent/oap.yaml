@@ -1,0 +1,22 @@
+apiVersion: oap/v1alpha1
+kind: Agent
+metadata:
+  name: support-ticket-agent
+  namespace: support
+spec:
+  owner: support-engineering
+  type: chat_agent
+  riskTier: medium
+  description: >
+    Customer support agent that reads tickets, looks up customer data,
+    sends notifications, and escalates critical issues. Operates under
+    OAP policy with field-level redaction and approval workflows.
+  capabilities:
+    - tickets.read
+    - tickets.update
+    - tickets.escalate
+    - customers.read
+    - notifications.send_email
+  runtime:
+    framework: langchain
+    language: python
