@@ -100,8 +100,8 @@ OAP is in active development following a spec-driven approach.
 | 1. Spec + Conformance | ✅ Complete | JSON Schemas, OpenAPI, 10 conformance tests |
 | 2. Engine + CLI | ✅ Complete | Go evaluator, oap-server, oapctl (10/10 conformance) |
 | 3. Python SDK | ✅ Complete | OAPClient, @protect decorator, LangChain integration |
-| 4. MCP Proxy + Gateway | Planned | MCP proxy, HTTP gateway, JWT grants |
-| 5. Production Ready | Planned | Identity verification, bundle sync, hardening |
+| 4. MCP Proxy + Gateway | ✅ Complete | MCP proxy, HTTP gateway, JWT grants, observe mode |
+| 5. Production Ready | ✅ Complete | Identity verification, bundle sync, security tests, Helm chart |
 
 See [PROGRESS.md](PROGRESS.md) for detailed tracking.
 

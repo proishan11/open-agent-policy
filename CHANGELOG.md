@@ -43,6 +43,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Observe mode for proxy and gateway (log-only, no blocking)
 - JWT grant issuance (`engine/grant/`) — HMAC-SHA256 signed grants with OAP claims
 - `make venv` for Python virtual environment setup
+- Identity verification (`engine/identity/`):
+  - DevVerifier, OIDCVerifier, KubernetesVerifier, CompositeVerifier
+- Policy bundle sync (`engine/bundle/`):
+  - Bundle server with ETag caching, polling client
+- Security abuse tests — prompt injection, confused deputy, escalation, revocation
+- Fail-closed behavior tests — empty store, no policies, empty fields
+- Dockerfile (multi-stage Go build → Alpine runtime)
+- docker-compose.yml reference environment
+- Helm chart (deploy/helm/oap/) for Kubernetes deployment
 - Project infrastructure:
   - Pre-commit hooks (conventional commits, gofmt, ruff, gitleaks)
   - GitHub Actions CI (lint, test, security scans)

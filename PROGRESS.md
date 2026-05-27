@@ -167,4 +167,39 @@
 - [x] doc.go for proxy, gateway, grant packages
 
 ## Milestone 5: Production Readiness
-_Not started_
+
+### Identity Verification (engine/identity/)
+- [x] Verifier interface — VerifyAgent() + VerifyActor()
+- [x] DevVerifier — accepts any credentials (local development)
+- [x] OIDCVerifier — validates JWT issuer, audience, expiry, claim mappings
+- [x] KubernetesVerifier — validates SA tokens, maps to agent://namespace/name
+- [x] CompositeVerifier — tries multiple verifiers in order
+- [x] 16 tests (dev, OIDC valid/wrong issuer/audience/expired, K8s valid/namespace/invalid, composite)
+
+### Policy Bundle Sync (engine/bundle/)
+- [x] Bundle format (JSON manifest with agents, policies, ETag)
+- [x] BundleServer — serves bundles from registry store, supports If-None-Match
+- [x] BundleClient — polls server, updates local store, ETag caching
+- [x] 5 tests (generate, ETag stable/changes, HTTP handler, client sync)
+
+### Security Abuse Tests (engine/evaluator/security_test.go)
+- [x] Prompt injection in action name (6 injection vectors)
+- [x] Prompt injection in agent ID (5 injection vectors)
+- [x] Confused deputy — agent can't use another agent's policies
+- [x] Privilege escalation — deny overrides allow, no implicit allow
+- [x] Suspended agent denied even with allow-all policy
+- [x] Unregistered agent denied
+
+### Fail-Closed Behavior Tests
+- [x] Empty store denies everything
+- [x] Agent with no policies denied by default
+- [x] Empty action name denied
+- [x] Empty agent ID denied
+
+### Deployment
+- [x] Dockerfile — multi-stage build (Go builder → Alpine runtime)
+- [x] docker-compose.yml — oap-server + conformance runner
+- [x] Helm chart (deploy/helm/oap/) — Deployment, Service, ServiceAccount, PVC
+
+### Documentation
+- [x] doc.go for identity and bundle packages
