@@ -102,6 +102,13 @@ OAP is in active development following a spec-driven approach.
 | 3. Python SDK | ✅ Complete | OAPClient, @protect decorator, LangChain integration |
 | 4. MCP Proxy + Gateway | ✅ Complete | MCP proxy, HTTP gateway, JWT grants, observe mode |
 | 5. Production Ready | ✅ Complete | Identity verification, bundle sync, security tests, Helm chart |
+| 6. Enterprise Identity & Storage | ✅ Complete | Real OIDC (Keycloak), Postgres, OPA/Cedar backends |
+| Agent Identity Binding | ✅ Complete | Identity bindings, sessions, runs, scoped grants |
+| Enforcement Layers | ✅ Complete | Gateway/proxy remote mode, grant middleware |
+| 7. Framework Integrations | 🟡 Planned | OpenAI Agents, CrewAI, AutoGen, LlamaIndex |
+| 8. Observability | 🟡 Planned | OpenTelemetry, SIEM exporters, Prometheus |
+
+**Test coverage:** 127 Go tests · 32 Python SDK tests · 70 e2e tests = **229 total**
 
 See [PROGRESS.md](PROGRESS.md) for detailed tracking.
 
@@ -111,20 +118,22 @@ See [PROGRESS.md](PROGRESS.md) for detailed tracking.
 spec/               — JSON Schemas and OpenAPI spec (the contract)
 conformance/        — Conformance test cases (the specification tests)
 engine/             — Go policy evaluator library
-  model/            — Core domain types
-  registry/         — In-memory store with file loading
-  evaluator/        — Policy decision engine
+  model/            — Core domain types (Agent, Policy, Decision, Grant)
+  evaluator/        — Policy decision engine (+ OPA, Cedar backends)
+  store/            — Pluggable storage (memory, Postgres)
+  session/          — Agent session + run management
+  grant/            — Scoped JWT grant issuance + validation
+  identity/         — OIDC, K8s, composite identity verifiers
   audit/            — Audit sinks (JSONL, stdout, memory)
-server/             — Go HTTP server
-  api/              — HTTP handlers
-  cmd/oap-server/   — Server binary
-cli/                — oapctl CLI
-  cmd/oapctl/       — CLI binary and commands
-sdk/python/         — Python SDK (OAPClient, @protect, LangChain)
+  bundle/           — Policy bundle sync (server → embedded)
+server/             — Go HTTP server (authorize, sessions, runs, grants)
+cli/                — oapctl CLI (simulate, explain, test, dev)
+sdk/python/         — Python SDK (OAPClient, Decision, Grant, @protect, LangChain)
+gateway/            — HTTP gateway (embedded + remote mode, grant middleware)
+proxy/              — MCP proxy (embedded + remote mode)
+validation/         — E2e test suite (Keycloak + Postgres + 70 tests)
 examples/           — Example agents, policies, and requests
-gateway/            — HTTP gateway (planned)
-proxy/              — MCP proxy (planned)
-docs/               — Architecture docs and ADRs
+docs/               — User guides, architecture docs, ADRs, flow diagrams
 demos/              — Runnable demos per milestone
 ```
 
@@ -145,12 +154,24 @@ python examples/enterprise-support-agent/agent.py
 | `send_email` (external) | ⏳ Approval | support-leads must approve |
 | `delete_ticket` | 🛑 **Deny** | compliance requirement |
 
-## Key documents
+## Documentation
+
+### User guides
+
+- [Getting Started](docs/guide/getting-started.md) — setup, first agent, first policy, integration
+- [Identity & Sessions](docs/guide/identity-and-sessions.md) — identity bindings, supported providers, sessions, runs, grant tokens
+- [Writing Policies](docs/guide/writing-policies.md) — policy authoring, constraints, evaluation order
+- [Integration Guide](docs/guide/integration.md) — SDK, gateway, proxy, grant middleware patterns
+
+### Reference
 
 - [Architecture](architecture.md) — system design, identity model, end-to-end flows
-- [Enterprise Roadmap](ENTERPRISE_ROADMAP.md) — milestones 6-11 for production readiness
-- [Development Plan](DEVELOPMENT_PLAN.md) — spec-driven approach, milestones 1-5
-- [Progress](PROGRESS.md) — milestone tracking
+- [Enterprise Roadmap](ENTERPRISE_ROADMAP.md) — milestones 7-11 for full enterprise readiness
+- [Development Plan](DEVELOPMENT_PLAN.md) — spec-driven approach, all milestones + gap analysis
+- [Progress](PROGRESS.md) — detailed milestone tracking
+
+### Project
+
 - [Contributing](CONTRIBUTING.md) — how to contribute
 - [Security](SECURITY.md) — vulnerability reporting
 - [Changelog](CHANGELOG.md) — release history
@@ -162,6 +183,7 @@ Recorded in [docs/adr/](docs/adr/):
 - [ADR-001: Library-first evaluator](docs/adr/001-library-first-evaluator.md)
 - [ADR-002: YAML rules-array policy format](docs/adr/002-yaml-policy-format.md)
 - [ADR-003: Pluggable policy engine](docs/adr/003-pluggable-policy-engine.md)
+- [ADR-004: Pluggable policy backend (OPA, Cedar)](docs/adr/004-pluggable-policy-backend.md)
 
 ## End-to-end flows
 

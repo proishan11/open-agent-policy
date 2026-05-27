@@ -12,10 +12,17 @@ Sits between an AI agent and an MCP server. The agent connects to the proxy inst
 proxy/
 ├── doc.go          Package documentation
 ├── proxy.go        MCP proxy implementation
-└── proxy_test.go   Integration tests (5 tests)
+└── proxy_test.go   Integration tests (8 tests)
 ```
 
-## Key Interfaces
+## Deployment Modes
+
+| Mode | Config | Use case |
+|---|---|---|
+| **Embedded** | `Store` + `AuditSink` | Sidecar deployment, local policy evaluation |
+| **Remote** | `OAPServerURL` | Centralized OAP server, session-aware auth |
+
+### Embedded mode (local evaluator)
 
 ```go
 p := proxy.New(proxy.Config{
@@ -28,14 +35,35 @@ p := proxy.New(proxy.Config{
 http.ListenAndServe(":7777", p.Handler())
 ```
 
+### Remote mode (OAP server)
+
+```go
+p := proxy.New(proxy.Config{
+    AgentID:      "agent://support/ticket-assistant",
+    UpstreamURL:  "http://mcp-server:8080",
+    OAPServerURL: "http://oap-server:8080",  // delegates to OAP server
+})
+http.ListenAndServe(":7777", p.Handler())
+```
+
+In remote mode, the proxy:
+1. Extracts the `Bearer` session token from incoming requests
+2. Calls OAP server `POST /v1/authorize` with the token and tool name
+3. On allow, forwards the tool call to the upstream MCP server
+4. On deny or OAP unreachable, returns MCP error -32001 (fail-closed)
+
 ## Data Flow
 
 ```
-Agent sends MCP JSON-RPC request
+Agent sends MCP JSON-RPC request (with Bearer session token)
   │
   ├── initialize → respond with proxy capabilities
   ├── tools/list → fetch from upstream, filter by policy
-  ├── tools/call → authorize, then:
+  ├── tools/call → authorize:
+  │     ├── [Embedded] evaluator.Evaluate(request) locally
+  │     │   OR
+  │     ├── [Remote] POST /v1/authorize to OAP server
+  │     │
   │     ├── deny → return MCP error (-32001)
   │     ├── allow → forward to upstream
   │     └── observe mode → log + forward regardless
@@ -44,16 +72,19 @@ Agent sends MCP JSON-RPC request
 
 ## Configuration
 
-| Field | Description |
-|-------|-------------|
-| `AgentID` | Agent identity for all proxied calls |
-| `UpstreamURL` | Upstream MCP server URL |
-| `ObserveMode` | Log decisions without blocking |
-| `Store` | Registry store (agents + policies) |
-| `AuditSink` | Audit event sink |
+| Field | Description | Required |
+|---|---|---|
+| `AgentID` | Agent identity for all proxied calls | Yes |
+| `UpstreamURL` | Upstream MCP server URL | Yes |
+| `OAPServerURL` | OAP server URL (remote mode) | For remote mode |
+| `Store` | Policy store (embedded mode) | For embedded mode |
+| `AuditSink` | Audit event sink | For embedded mode |
+| `ObserveMode` | Log decisions without blocking | No (default: false) |
 
 ## Testing
 
 ```bash
 go test -v ./proxy/
+# 8 tests: initialize, allow, deny, observe, health,
+#          remote allow, remote deny, OAP down
 ```

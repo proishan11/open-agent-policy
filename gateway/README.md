@@ -10,12 +10,20 @@ Sits between an AI agent and an upstream HTTP API. The agent changes its API bas
 
 ```
 gateway/
-├── doc.go           Package documentation
-├── gateway.go       HTTP gateway implementation
-└── gateway_test.go  Integration tests (6 tests)
+├── doc.go              Package documentation
+├── gateway.go          HTTP gateway implementation
+├── grant_middleware.go  Resource-side grant validation middleware
+└── gateway_test.go     Integration tests (13 tests)
 ```
 
-## Key Interfaces
+## Deployment Modes
+
+| Mode | Config | Use case |
+|---|---|---|
+| **Embedded** | `Store` + `AuditSink` | Sidecar deployment, local policy evaluation |
+| **Remote** | `OAPServerURL` | Centralized OAP server, session-aware auth |
+
+### Embedded mode (local evaluator)
 
 ```go
 gw, _ := gateway.New(gateway.Config{
@@ -33,16 +41,59 @@ gw, _ := gateway.New(gateway.Config{
 http.ListenAndServe(":9090", gw.Handler())
 ```
 
+### Remote mode (OAP server)
+
+```go
+gw, _ := gateway.New(gateway.Config{
+    AgentID:      "agent://finance/reconciler",
+    UpstreamURL:  "https://erp-api.internal",
+    OAPServerURL: "http://oap-server:8080",  // delegates to OAP server
+    Routes: map[string]string{
+        "GET /api/invoices":    "erp.invoice.read",
+        "DELETE /api/invoices": "erp.invoice.delete",
+    },
+})
+```
+
+In remote mode, the gateway:
+1. Extracts the `Bearer` session token from incoming requests
+2. Calls OAP server `POST /v1/authorize` with the token
+3. On allow, injects the grant token as `X-OAP-Grant-Token` into the upstream request
+4. On deny or OAP unreachable, returns 403 (fail-closed)
+
+## Grant Middleware
+
+Reusable middleware for resource APIs to validate OAP grant tokens:
+
+```go
+mw := gateway.NewGrantMiddleware(gateway.GrantMiddlewareConfig{
+    OAPServerURL: "http://oap-server:8080",
+    HeaderName:   "X-OAP-Grant-Token",  // default
+    AllowMissing: false,                  // fail-closed
+})
+http.Handle("/api/", mw.Wrap(myAPIHandler))
+```
+
+On valid grant, sets headers on the request for the downstream handler:
+- `X-OAP-Verified-Agent-ID` — the authorized agent
+- `X-OAP-Verified-Action` — the allowed action
+- `X-OAP-Verified-Decision` — `allow` or `allow_with_constraints`
+- `X-OAP-Run-ID` — execution run ID (if present)
+
 ## Data Flow
 
 ```
-Agent sends HTTP request
+Agent sends HTTP request (with Bearer session token)
   │
   ├── Map method + path → OAP action (explicit routes or derived)
   ├── Check X-OAP-Agent-ID header (optional override)
-  ├── evaluator.Evaluate(request)
+  │
+  ├── [Embedded] evaluator.Evaluate(request) locally
+  │   OR
+  ├── [Remote] POST /v1/authorize to OAP server (with Bearer token)
+  │
   │     ├── deny → return 403 with structured error
-  │     ├── allow → forward to upstream via reverse proxy
+  │     ├── allow → inject X-OAP-Grant-Token, forward to upstream
   │     └── observe mode → log + forward regardless
   └── Emit audit event
 ```
@@ -55,17 +106,21 @@ Agent sends HTTP request
 
 ## Configuration
 
-| Field | Description |
-|-------|-------------|
-| `AgentID` | Default agent identity |
-| `UpstreamURL` | Target API server URL |
-| `ObserveMode` | Log decisions without blocking |
-| `Routes` | Map of `"METHOD /path" → "action.name"` |
-| `Store` | Registry store (agents + policies) |
-| `AuditSink` | Audit event sink |
+| Field | Description | Required |
+|---|---|---|
+| `AgentID` | Default agent identity | Yes |
+| `UpstreamURL` | Target API server URL | Yes |
+| `OAPServerURL` | OAP server URL (remote mode) | For remote mode |
+| `Store` | Policy store (embedded mode) | For embedded mode |
+| `AuditSink` | Audit event sink | For embedded mode |
+| `ObserveMode` | Log decisions without blocking | No (default: false) |
+| `Routes` | Map of `"METHOD /path" → "action.name"` | No |
 
 ## Testing
 
 ```bash
 go test -v ./gateway/
+# 13 tests: allow, deny, observe, health, routes, agent override,
+#           remote allow+grant injection, remote deny, OAP down,
+#           grant middleware valid/missing/allow-missing/invalid
 ```

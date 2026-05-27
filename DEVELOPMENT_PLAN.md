@@ -369,6 +369,140 @@ docker compose up
 
 ---
 
+### Post-M5 Enterprise Phases: Agent Identity Binding & Enforcement
+
+After Milestones 1–5 (spec, engine, SDK, proxy/gateway, production readiness) and
+Milestone 6 (real IDP + Postgres + pluggable backends), three additional phases were
+implemented to bring the system closer to production-grade zero-trust enforcement.
+
+#### Phase 1: Agent Identity Binding & Sessions
+
+**Goal:** Bind verifiable runtime identities to logical agents. No more trusting agent_id headers.
+
+**Flow:**
+```text
+Agent → IdP (client_credentials) → runtime JWT
+Agent → OAP POST /v1/runtime/session {agent_id, runtime_token}
+       → OAP validates JWT against agent's identityBindings (issuer, subject, audience)
+       → returns ags_ session token (15min TTL)
+Agent uses session token as Bearer for all subsequent calls
+```
+
+**Key deliverables:**
+- `engine/model/agent.go` — IdentityBinding struct on AgentSpec
+- `engine/session/session.go` — Session manager, crypto-secure ags_ tokens
+- `engine/session/token.go` — Multi-issuer JWT validator with JWKS auto-discovery
+- `server/api/auth.go` — Auth middleware: session tokens (primary) + raw JWT (fallback)
+- `server/api/server.go` — POST /v1/runtime/session handler
+
+#### Phase 2: Runs & Scoped Grants
+
+**Goal:** Track execution context and issue resource-scoped, time-bound proof tokens.
+
+**Flow:**
+```text
+Agent → POST /v1/runs {session_id, actor, purpose} → run_id
+Agent → POST /v1/authorize {action, resource, context: {run_id}}
+       → decision + scoped grant JWT (HMAC-SHA256, 5min TTL)
+Agent → Resource API (with grant token)
+Resource API → POST /v1/grants/validate {grant_token} → verified claims
+```
+
+**Key deliverables:**
+- `engine/session/session.go` — AgentRun model, CreateRun on Manager
+- `engine/grant/jwt.go` — IssueScoped with resource_type, resource_id, run_id
+- `server/api/server.go` — POST /v1/runs, POST /v1/grants/validate, grant issuance on allow
+
+#### Phase 3: Enforcement Layers
+
+**Goal:** Gateway, proxy, and resource middleware enforce sessions + grants end-to-end.
+
+**Architecture:**
+```text
+                    ┌─────────────┐
+                    │  OAP Server  │  (sessions, policies, grants)
+                    └──────┬──────┘
+                           │ /v1/authorize
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+        ┌──────────┐ ┌──────────┐ ┌──────────────┐
+        │ Gateway  │ │MCP Proxy │ │ Python SDK   │
+        │(HTTP)    │ │(JSON-RPC)│ │ (direct)     │
+        └────┬─────┘ └────┬─────┘ └──────┬───────┘
+             │ X-OAP-Grant-Token         │ grant.token
+             ▼                           ▼
+        ┌──────────────┐          ┌──────────────┐
+        │Resource API  │          │ Resource API  │
+        │GrantMiddleware│         │/v1/grants/    │
+        └──────────────┘          │  validate     │
+                                  └──────────────┘
+```
+
+**Key deliverables:**
+- `gateway/gateway.go` — OAPServerURL remote mode, grant injection into upstream
+- `proxy/proxy.go` — OAPServerURL remote mode, fail-closed semantics
+- `gateway/grant_middleware.go` — Reusable resource-side grant validation middleware
+- `sdk/python/open_agent_policy/client.py` — Grant dataclass, create_session(), create_run(), validate_grant()
+
+**Deployment modes:**
+- **Embedded:** gateway/proxy uses local evaluator (sidecar deployments)
+- **Remote:** gateway/proxy calls OAP server /v1/authorize (centralized deployments)
+
+#### Deferred Items (future phases)
+
+| Item | Description | When |
+|---|---|---|
+| mTLS verifier | Extract client cert, match CN/SAN against binding subject | When mutual TLS is needed |
+| SPIFFE X.509-SVID | Validate X.509 SVID against SPIFFE trust bundle | When X.509 workload identity is needed |
+| Signed deployment metadata | Custom attestation format verification | When supply-chain attestation is needed |
+| Container image digest | Attestation-based policy constraint | When image verification is needed |
+| IdentityVerifier interface | Refactor TokenValidator into pluggable per-type implementations | Before implementing any of the above |
+
+---
+
+### Enterprise Readiness — Current Gap Analysis
+
+> **Status as of Phase 3 completion:** Core platform is functional with real
+> identity, storage, sessions, grants, and enforcement. Not yet enterprise-GA.
+> See `ENTERPRISE_ROADMAP.md` for full details on each milestone.
+
+| Area | Status | What's Done | What's Needed | Milestone |
+|---|---|---|---|---|
+| **Identity** | ✅ Done | Real OIDC (Keycloak), identity bindings, sessions | mTLS, X.509 SPIFFE (deferred) | M6 |
+| **Storage** | ✅ Done | Postgres + memory + pluggable Store interface | Redis cache (optional), Git-backed policies | M6 |
+| **Policy Engine** | ✅ Done | Built-in evaluator + OPA + Cedar backends | — | M6 |
+| **Auth & Grants** | ✅ Done | Session tokens, scoped grants, run tracking | — | Phase 1-2 |
+| **Enforcement** | ✅ Done | Gateway, MCP proxy (dual mode), grant middleware | — | Phase 3 |
+| **Framework Integrations** | 🟡 Partial | LangChain + MCP proxy | OpenAI Agents, CrewAI, AutoGen, LlamaIndex, Semantic Kernel | **M7** |
+| **Observability** | ❌ Not started | JSONL audit sink only | OpenTelemetry, SIEM (Datadog/Splunk/Elastic), Prometheus metrics | **M8** |
+| **Multi-tenancy & RBAC** | ❌ Not started | Single-tenant, namespace-based | Tenant isolation, RBAC for OAP, rate limiting, GitOps policy sync | **M9** |
+| **Real-world Validation** | 🟡 Partial | 70 e2e tests, enterprise-support-agent example | Full agent → real API e2e | **M10** |
+| **Hardening & Scale** | ❌ Not started | Single instance, basic tests | Load testing, circuit breakers, HA, compliance mapping | **M11** |
+
+#### Remaining milestones to enterprise GA
+
+**M7: Framework Integrations** — First-class support for OpenAI Agents SDK, CrewAI, AutoGen,
+LlamaIndex, Semantic Kernel, Haystack. TypeScript SDK. Each gets one-line setup, constraint
+injection, and tests.
+
+**M8: Observability & Audit** — OpenTelemetry spans per decision, trace propagation from
+SDK → OAP → upstream. Prometheus `/metrics` endpoint. SIEM exporters (Datadog, Splunk,
+Elastic, CloudWatch). Grafana dashboard template. Audit search API.
+
+**M9: Multi-Tenancy, RBAC & Policy Management** — Tenant isolation (namespace or header),
+RBAC for OAP admin operations, policy versioning with effective dates, dry-run/what-if,
+GitOps workflow (PR → validate → merge → sync), rate limiting per agent/tenant.
+
+**M10: Real-World End-to-End Validation** — Production-realistic LangChain agent hitting
+simulated ticketing + CRM APIs, real Keycloak auth, Postgres storage, constraint enforcement
+(redaction, max records), approval workflow, audit trail, observe → enforce transition.
+
+**M11: Hardening & Scale** — Load testing (10k decisions/sec target), benchmarks, graceful
+degradation, circuit breakers, distributed tracing, security scanning, penetration testing
+guide, SOC 2 compliance mapping, operational runbook.
+
+---
+
 ## 4. Progress tracking
 
 Progress is tracked in `PROGRESS.md` at the repo root, updated after each milestone.

@@ -2,7 +2,7 @@
 
 **Started:** 2026-05-27  
 **Approach:** Spec-driven development  
-**Current milestone:** 1 — Spec + Conformance Tests
+**Current milestone:** Post-M6 — Agent Identity Binding & Enforcement Layers
 
 ---
 
@@ -240,7 +240,144 @@
 - [x] Postgres integration tests (skip when no DB)
 - [x] Enterprise roadmap updated: Redis marked optional, storage tiers clarified
 
+### Store Wiring
+- [x] `engine/store/loader.go` — Standalone LoadDir/LoadFile for any store.Store
+- [x] `engine/evaluator/evaluator.go` — Accepts store.Store interface (was *registry.Store), fail-closed on errors
+- [x] `engine/bundle/bundle.go` — Server and Client use store.Store
+- [x] `server/api/server.go` — Uses store.Store + memory.New() default
+- [x] `proxy/proxy.go` and `gateway/gateway.go` — Config.Store is store.Store
+- [x] `cli/cmd/oapctl/commands/` — All commands use memory.New() + store.LoadDir
+- [x] All 15 Go test packages pass after wiring
+
+### Validation Environment
+- [x] `validation/docker-compose.yml` — Keycloak + Postgres + OAP server + e2e test runner
+- [x] `validation/Dockerfile.oap-server` — Build and run OAP server with policies
+- [x] `validation/Dockerfile.e2e` — Python test runner
+- [x] `validation/policies/` — Agent, policy, identity provider YAML
+- [x] `validation/keycloak/realm-export.json` — Realm with client credentials for support-agent
+- [x] `validation/tests/conftest.py` — Keycloak token client, OAPTestClient, fixtures
+- [x] 70 e2e tests passing against real Keycloak + OAP server
+
 ### Pending
-- [ ] Wire new store.Store interface into evaluator + server (replace registry.Store)
-- [ ] docker-compose.enterprise.yml with Postgres + Keycloak
 - [ ] ADR: JWKS rotation and caching strategy
+
+---
+
+## Phase 1: Agent Identity Binding & Sessions
+
+**Goal:** Bind verifiable runtime identities (OIDC, K8s SA, SPIFFE) to logical agents, issue session tokens.
+
+### Identity Bindings
+- [x] `engine/model/agent.go` — Added IdentityBinding struct to AgentSpec (type, issuer, subject, audience)
+- [x] Supported binding types: oidc_client, kubernetes_sa, spiffe (JWT-based)
+
+### Session Management
+- [x] `engine/session/session.go` — AgentSession model, Manager with in-memory store
+- [x] CreateSession: validates runtime JWT against agent's identity bindings → ags_ session token
+- [x] Cryptographically secure session ID generation (ags_ prefix, 32 random bytes, hex)
+- [x] Configurable TTL (default 15 minutes)
+- [x] Session lookup by token (GetSession)
+
+### Token Validation
+- [x] `engine/session/token.go` — Multi-issuer JWT verification
+- [x] JWKS auto-discovery and caching via OIDC .well-known endpoints
+- [x] ValidateAgainstBindings: matches JWT claims (iss, sub, aud) to agent identity bindings
+- [x] RS256/ES256 signature verification
+
+### Server Integration
+- [x] `server/api/server.go` — POST /v1/runtime/session endpoint
+- [x] `server/api/auth.go` — Auth middleware: ags_ session tokens (primary) + raw JWT (fallback)
+- [x] --issuer flag for backward-compatible JWT validation
+- [x] VerifiedAgentID context key — authorize handler overrides agent_id with cryptographically verified identity
+
+### Test Coverage
+- [x] Session lifecycle tests (create, verify, expire)
+- [x] Identity binding validation tests (valid OIDC, wrong issuer, wrong subject)
+- [x] Auth middleware tests (session token, raw JWT, missing token)
+
+---
+
+## Phase 2: Runs & Scoped Grants
+
+**Goal:** Track agent execution context (runs) and issue scoped, time-bound grant tokens on allow decisions.
+
+### Agent Runs
+- [x] `engine/session/session.go` — AgentRun model (run_id, session_id, agent_id, actor, purpose, status)
+- [x] CreateRun on Manager — creates run within an active session
+- [x] RunActor struct (type, id) for tracking who triggered the run
+
+### Scoped Grant Tokens
+- [x] `engine/grant/jwt.go` — Enhanced Claims with resource_type, resource_id, run_id, audience
+- [x] GrantRequest struct for full-context grant issuance
+- [x] IssueScoped: HMAC-SHA256 signed JWT with agent_id, action, resource, decision, constraints, run_id
+- [x] Default 5-minute TTL
+- [x] Backward-compatible Issue() delegates to IssueScoped()
+
+### Server Integration
+- [x] `server/api/server.go` — POST /v1/runs endpoint (create run within session)
+- [x] `server/api/server.go` — POST /v1/grants/validate endpoint (resource-side verification)
+- [x] `server/api/server.go` — handleAuthorize issues scoped grant on allow/allow_with_constraints
+- [x] `server/cmd/oap-server/main.go` — --grant-key flag for HMAC signing key
+
+### Test Coverage
+- [x] `validation/tests/e2e/test_sessions_grants.py` — 9 tests:
+  - Session lifecycle (create, verify identity, token format)
+  - Run creation within session
+  - Grant issuance on allow decisions
+  - No grant on deny decisions
+  - Grant validation (valid, expired, forged rejected)
+
+---
+
+## Phase 3: Enforcement Layers
+
+**Goal:** Integrate session-based auth and grant injection into gateway, proxy, and resource APIs.
+
+### Gateway Remote Auth Mode
+- [x] `gateway/gateway.go` — OAPServerURL config for remote auth mode
+- [x] authorizeRemote: calls OAP server /v1/authorize with Bearer session token
+- [x] Grant injection: sets X-OAP-Grant-Token header on upstream request
+- [x] Fail-closed: denies on OAP server unreachable
+- [x] Dual mode: embedded evaluator (sidecar) or remote OAP server (centralized)
+
+### MCP Proxy Remote Auth Mode
+- [x] `proxy/proxy.go` — OAPServerURL config for remote auth mode
+- [x] authorizeRemote: calls OAP server /v1/authorize with Bearer session token
+- [x] Fail-closed: denies on OAP server unreachable
+- [x] Dual mode: embedded evaluator or remote OAP server
+
+### Resource-Side Grant Middleware
+- [x] `gateway/grant_middleware.go` — Reusable GrantMiddleware for resource APIs
+- [x] Validates X-OAP-Grant-Token header via OAP server /v1/grants/validate
+- [x] Sets verified identity headers: X-OAP-Verified-Agent-ID, X-OAP-Verified-Action, X-OAP-Verified-Decision
+- [x] AllowMissing mode for gradual rollout
+- [x] Fail-closed: rejects requests with missing or invalid grants
+
+### Python SDK Session Support
+- [x] `sdk/python/open_agent_policy/client.py` — Grant dataclass, Decision.grant field
+- [x] OAPClient.create_session() — proves identity, auto-sets auth header
+- [x] OAPClient.create_run() — creates run within session
+- [x] OAPClient.validate_grant() — resource-side grant verification
+- [x] session_token constructor param with auto Bearer header
+- [x] Grant and Decision exported from __init__.py
+
+### Test Coverage
+- [x] `gateway/gateway_test.go` — +7 tests:
+  - Remote auth allow (with grant injection verification)
+  - Remote auth deny
+  - OAP server down → fail-closed (403)
+  - Grant middleware: valid grant, missing grant (401), allow-missing mode, invalid grant (403)
+- [x] `proxy/proxy_test.go` — +3 tests:
+  - Remote auth allow
+  - Remote auth deny
+  - OAP server down → fail-closed
+- [x] All 70 e2e tests passing
+- [x] All 32 Python SDK tests passing
+- [x] All Go tests passing across all packages
+
+### Deferred (noted for future implementation)
+- [ ] mTLS certificate verifier (extract client cert, match CN/SAN against binding subject)
+- [ ] SPIFFE X.509-SVID verifier (validate against SPIFFE trust bundle)
+- [ ] Signed deployment metadata verifier (custom attestation format)
+- [ ] Container image digest attestation (policy constraint, not identity)
+- [ ] Refactor TokenValidator into pluggable IdentityVerifier interface
