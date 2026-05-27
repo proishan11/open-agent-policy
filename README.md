@@ -128,10 +128,28 @@ docs/               — Architecture docs and ADRs
 demos/              — Runnable demos per milestone
 ```
 
+## Real-world example
+
+The [enterprise support agent](examples/enterprise-support-agent/) demonstrates OAP protecting a realistic support ticket agent:
+
+```bash
+python examples/enterprise-support-agent/agent.py
+```
+
+| Tool | Decision | Constraints |
+|---|---|---|
+| `list_tickets` | ✅ Allow | max 10 records |
+| `read_customer` | ✅ Allow | **Redact: SSN, credit card, bank account** |
+| `update_ticket` | ✅ Allow | status/priority/assignee only |
+| `escalate_ticket` | ✅ Allow | P1/P2 only |
+| `send_email` (external) | ⏳ Approval | support-leads must approve |
+| `delete_ticket` | 🛑 **Deny** | compliance requirement |
+
 ## Key documents
 
 - [Architecture](architecture.md) — system design, identity model, end-to-end flows
-- [Development Plan](DEVELOPMENT_PLAN.md) — spec-driven approach, milestones, blog series
+- [Enterprise Roadmap](ENTERPRISE_ROADMAP.md) — milestones 6-11 for production readiness
+- [Development Plan](DEVELOPMENT_PLAN.md) — spec-driven approach, milestones 1-5
 - [Progress](PROGRESS.md) — milestone tracking
 - [Contributing](CONTRIBUTING.md) — how to contribute
 - [Security](SECURITY.md) — vulnerability reporting
@@ -144,6 +162,16 @@ Recorded in [docs/adr/](docs/adr/):
 - [ADR-001: Library-first evaluator](docs/adr/001-library-first-evaluator.md)
 - [ADR-002: YAML rules-array policy format](docs/adr/002-yaml-policy-format.md)
 - [ADR-003: Pluggable policy engine](docs/adr/003-pluggable-policy-engine.md)
+
+## End-to-end flows
+
+Mermaid sequence diagrams in [docs/flows/](docs/flows/):
+
+- [Agent onboarding](docs/flows/agent-onboarding.md)
+- [Runtime authorization](docs/flows/runtime-authorization.md)
+- [Delegation](docs/flows/delegation.md)
+- [Approval workflow](docs/flows/approval.md)
+- [Revocation](docs/flows/revocation.md)
 
 ## Development
 
