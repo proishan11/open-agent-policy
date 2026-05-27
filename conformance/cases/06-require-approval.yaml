@@ -1,0 +1,59 @@
+# Conformance Test 06: Require Approval
+# Validates: Approval flow — high-risk actions can require human approval.
+
+name: require-approval
+description: An action matching a require_approval rule returns an approval request.
+
+agents:
+  - apiVersion: oap.dev/v1alpha1
+    kind: Agent
+    metadata:
+      name: invoice-reconciler
+      namespace: finance
+    spec:
+      owner: group:finance-platform
+      type: workflow_agent
+      riskTier: medium
+      capabilities:
+        - erp.invoice.update_status
+    status:
+      state: active
+
+policies:
+  - apiVersion: oap.dev/v1alpha1
+    kind: AgentPolicy
+    metadata:
+      name: finance-invoice-approval
+      namespace: finance
+    spec:
+      subject:
+        agent: agent://finance/invoice-reconciler
+      rules:
+        - effect: require_approval
+          actions:
+            - erp.invoice.update_status
+          approval:
+            approvers:
+              - group:finance-leads
+            minApprovals: 1
+            expiresIn: 30m
+          reason: "Invoice status changes require finance lead approval."
+
+request:
+  request_id: req_test06
+  timestamp: "2026-05-25T08:00:00Z"
+  subject:
+    type: agent
+    agent_id: agent://finance/invoice-reconciler
+  action:
+    name: erp.invoice.update_status
+  resource:
+    type: erp.invoice
+    id: INV-001
+
+expected:
+  decision: require_approval
+  approval:
+    approvers:
+      - group:finance-leads
+  reason_contains: approval

@@ -1,0 +1,52 @@
+# Conformance Test 03: Simple Allow
+# Validates: Basic allow flow — registered agent with matching policy is allowed.
+
+name: simple-allow
+description: A registered agent with a matching allow policy is permitted.
+
+agents:
+  - apiVersion: oap.dev/v1alpha1
+    kind: Agent
+    metadata:
+      name: invoice-reconciler
+      namespace: finance
+    spec:
+      owner: group:finance-platform
+      type: workflow_agent
+      riskTier: medium
+      capabilities:
+        - erp.invoice.read
+    status:
+      state: active
+
+policies:
+  - apiVersion: oap.dev/v1alpha1
+    kind: AgentPolicy
+    metadata:
+      name: finance-invoice-read
+      namespace: finance
+    spec:
+      subject:
+        agent: agent://finance/invoice-reconciler
+      rules:
+        - effect: allow
+          actions:
+            - erp.invoice.read
+          resources:
+            types:
+              - erp.invoice
+
+request:
+  request_id: req_test03
+  timestamp: "2026-05-25T08:00:00Z"
+  subject:
+    type: agent
+    agent_id: agent://finance/invoice-reconciler
+  action:
+    name: erp.invoice.read
+  resource:
+    type: erp.invoice
+    id: INV-001
+
+expected:
+  decision: allow

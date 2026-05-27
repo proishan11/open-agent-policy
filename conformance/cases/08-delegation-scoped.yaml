@@ -1,0 +1,73 @@
+# Conformance Test 08: Delegation Scoped
+# Validates: Delegation bounds — an agent acting under delegation cannot exceed the delegation scope.
+
+name: delegation-scoped
+description: An agent with a delegation scoped to read cannot perform write actions.
+
+agents:
+  - apiVersion: oap.dev/v1alpha1
+    kind: Agent
+    metadata:
+      name: invoice-reconciler
+      namespace: finance
+    spec:
+      owner: group:finance-platform
+      type: workflow_agent
+      riskTier: medium
+      capabilities:
+        - erp.invoice.read
+        - erp.invoice.update_status
+    status:
+      state: active
+
+policies:
+  - apiVersion: oap.dev/v1alpha1
+    kind: AgentPolicy
+    metadata:
+      name: finance-invoice-all
+      namespace: finance
+    spec:
+      subject:
+        agent: agent://finance/invoice-reconciler
+      rules:
+        - effect: allow
+          actions:
+            - erp.invoice.read
+            - erp.invoice.update_status
+          resources:
+            types:
+              - erp.invoice
+
+delegations:
+  - delegation_id: del_test08
+    delegator: user:ishan@example.com
+    delegate: agent://finance/invoice-reconciler
+    scope:
+      actions:
+        - erp.invoice.read
+      resources:
+        types:
+          - erp.invoice
+    expires_at: "2026-05-25T09:00:00Z"
+
+# Agent tries to update_status, but delegation only covers read
+request:
+  request_id: req_test08
+  timestamp: "2026-05-25T08:30:00Z"
+  subject:
+    type: agent
+    agent_id: agent://finance/invoice-reconciler
+  actor:
+    type: user
+    id: user:ishan@example.com
+  action:
+    name: erp.invoice.update_status
+  resource:
+    type: erp.invoice
+    id: INV-001
+  context:
+    delegation_id: del_test08
+
+expected:
+  decision: deny
+  reason_contains: delegation scope
