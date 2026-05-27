@@ -43,26 +43,52 @@ Agent registers with OAP
 
 ## Quick start
 
+### Prerequisites
+
+- **Go 1.22+** — [install](https://go.dev/doc/install)
+- **Python 3.11+** — [install](https://www.python.org/downloads/)
+- **Make** — pre-installed on macOS/Linux
+
+### Setup
+
 ```bash
-# Install
-pip install open-agent-policy   # Python SDK (coming soon)
-# or
-brew install oapctl             # CLI (coming soon)
+# Clone
+git clone https://github.com/proishan11/open-agent-policy.git
+cd open-agent-policy
 
-# Initialize agent project
-oapctl init --framework langchain
+# Create venv, install Python deps + SDK in dev mode
+make venv
 
-# Register agent
-oapctl agent register -f oap.yaml
+# Activate the virtual environment
+source .venv/bin/activate
 
-# Apply policy
-oapctl policy apply -f policies/my-policy.yaml
+# Install pre-commit hooks
+make install-tools
 
-# Test policy
-oapctl simulate -f requests/test-request.json
+# Build Go binaries
+make build
+```
 
-# Run conformance tests
-make test-conformance
+### Try it out
+
+```bash
+# Run all 10 conformance tests
+./bin/oapctl test --conformance
+
+# Simulate an authorization decision
+./bin/oapctl simulate \
+  -f examples/finance-invoice-agent/requests/read-invoice.json \
+  --data examples/finance-invoice-agent/
+# → allow_with_constraints (readonly, redact bank_account, max 25 records)
+
+# Explain the decision step-by-step
+./bin/oapctl explain \
+  -f examples/finance-invoice-agent/requests/delete-invoice.json \
+  --data examples/finance-invoice-agent/
+# → deny (Agents may not delete invoices)
+
+# Run all tests (Go + Python + conformance)
+make test
 ```
 
 ## Project status
@@ -72,8 +98,8 @@ OAP is in active development following a spec-driven approach.
 | Milestone | Status | Description |
 |---|---|---|
 | 1. Spec + Conformance | ✅ Complete | JSON Schemas, OpenAPI, 10 conformance tests |
-| 2. Engine + CLI | 🔜 Next | Go evaluator, oap-server, oapctl |
-| 3. Python SDK | Planned | @protect decorator, LangChain middleware |
+| 2. Engine + CLI | ✅ Complete | Go evaluator, oap-server, oapctl (10/10 conformance) |
+| 3. Python SDK | ✅ Complete | OAPClient, @protect decorator, LangChain integration |
 | 4. MCP Proxy + Gateway | Planned | MCP proxy, HTTP gateway, JWT grants |
 | 5. Production Ready | Planned | Identity verification, bundle sync, hardening |
 
@@ -84,15 +110,22 @@ See [PROGRESS.md](PROGRESS.md) for detailed tracking.
 ```text
 spec/               — JSON Schemas and OpenAPI spec (the contract)
 conformance/        — Conformance test cases (the specification tests)
-engine/             — Go policy evaluator library (coming)
-server/             — Go HTTP server (coming)
-cli/                — oapctl CLI (coming)
-sdk/python/         — Python SDK (coming)
-gateway/            — HTTP gateway (coming)
-proxy/              — MCP proxy (coming)
+engine/             — Go policy evaluator library
+  model/            — Core domain types
+  registry/         — In-memory store with file loading
+  evaluator/        — Policy decision engine
+  audit/            — Audit sinks (JSONL, stdout, memory)
+server/             — Go HTTP server
+  api/              — HTTP handlers
+  cmd/oap-server/   — Server binary
+cli/                — oapctl CLI
+  cmd/oapctl/       — CLI binary and commands
+sdk/python/         — Python SDK (OAPClient, @protect, LangChain)
+examples/           — Example agents, policies, and requests
+gateway/            — HTTP gateway (planned)
+proxy/              — MCP proxy (planned)
 docs/               — Architecture docs and ADRs
 demos/              — Runnable demos per milestone
-blog/               — Blog post drafts
 ```
 
 ## Key documents
@@ -115,17 +148,22 @@ Recorded in [docs/adr/](docs/adr/):
 ## Development
 
 ```bash
-# Setup
-make install-tools    # Install pre-commit hooks, linters, formatters
+# First-time setup
+make venv             # Create venv, install all Python deps + SDK
+source .venv/bin/activate
+make install-tools    # Install pre-commit hooks
 
 # Common tasks
-make lint             # Run all linters
-make fmt              # Format all code
-make test             # Run all tests
+make build            # Build Go binaries (bin/oap-server, bin/oapctl)
+make test             # Run all tests (Go + Python + conformance)
+make test-go          # Run Go tests only
+make test-python      # Run Python SDK tests only
 make test-conformance # Validate schemas and conformance tests
-make demo             # Run demos
-make build            # Build Go binaries
-make clean            # Clean artifacts
+make lint             # Run all linters (Go + Python + YAML + JSON + OpenAPI)
+make fmt              # Format all code
+make demo             # Run all demos
+make clean            # Clean build artifacts
+make clean-all        # Clean everything including .venv
 ```
 
 ## License
