@@ -103,7 +103,37 @@
 - [ ] Blog post 03 draft: "Building the Engine"
 
 ## Milestone 3: Python SDK + LangChain
-_Not started_
+
+### Python SDK (sdk/python/)
+- [x] Package structure with pyproject.toml (hatchling build, httpx + pyyaml deps)
+- [x] OAPClient — remote mode (HTTP to oap-server) and embedded mode (oapctl subprocess)
+- [x] Decision dataclass with is_allowed/is_denied/requires_approval helpers
+- [x] @protect decorator — wraps tool functions with automatic authorization
+- [x] Error hierarchy (OAPError, PermissionDeniedError, ApprovalRequiredError, ServerError)
+- [x] Agent identity auto-discovery — configurable via constructor params
+
+### LangChain Integration
+- [x] OAPToolWrapper — wraps any LangChain BaseTool with OAP authorization
+- [x] protect_tools() — one-line integration to wrap all tools in an agent
+- [x] Conditional langchain-core import (optional dependency)
+
+### Tests (32 passing)
+- [x] test_client.py — Decision, client validation, remote mode via httpx mock, request body structure
+- [x] test_decorators.py — allow, deny, constrained, approval, metadata, action defaults
+- [x] test_langchain.py — OAPToolWrapper, protect_tools, action prefix
+
+### Documentation
+- [x] sdk/python/README.md — Purpose, architecture, key interfaces, data flow, config, testing
+
+### Infrastructure
+- [x] make venv — Python virtual environment setup
+- [x] Makefile updated for venv-based Python, single Go module at root
+- [x] README.md updated with setup instructions and prerequisites
+
+### Go Test Coverage
+- [x] engine/model/model_test.go — Agent, Policy, Grant tests
+- [x] engine/registry/store_test.go — Store CRUD, file loading, error paths
+- [x] engine/audit/sink_test.go — MemorySink, JSONLSink, invalid paths
 
 ## Milestone 4: MCP Proxy + HTTP Gateway
 _Not started_

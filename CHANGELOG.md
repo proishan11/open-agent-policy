@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Finance invoice agent example (agent manifest, policy, request samples)
 - Component READMEs for engine, server, cli (per §8 documentation standards)
 - doc.go for every Go package
+- Python SDK (`sdk/python/open_agent_policy`):
+  - `OAPClient` with remote (HTTP) and embedded (oapctl subprocess) modes
+  - `@protect` decorator for automatic tool authorization
+  - `OAPToolWrapper` and `protect_tools()` for LangChain integration
+  - Error hierarchy (`PermissionDeniedError`, `ApprovalRequiredError`, `ServerError`)
+  - 32 pytest tests passing
+- Go test coverage for all engine packages (model, registry, audit)
+- `make venv` for Python virtual environment setup
 - Project infrastructure:
   - Pre-commit hooks (conventional commits, gofmt, ruff, gitleaks)
   - GitHub Actions CI (lint, test, security scans)
