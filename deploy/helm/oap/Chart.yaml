@@ -1,0 +1,15 @@
+apiVersion: v2
+name: oap
+description: Open Agent Policy — zero-trust access control for AI agents
+type: application
+version: 0.1.0
+appVersion: "0.1.0-alpha"
+maintainers:
+  - name: Ishan Singh
+    url: https://github.com/proishan11
+keywords:
+  - ai
+  - agents
+  - security
+  - authorization
+  - policy

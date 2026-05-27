@@ -1,0 +1,38 @@
+# OAP reference environment
+# Usage: docker compose up
+#
+# Services:
+#   oap-server  — OAP control plane (port 8080)
+#   oap-proxy   — MCP proxy example (port 7777)
+#   oap-gateway — HTTP gateway example (port 9090)
+
+services:
+  oap-server:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./examples/finance-invoice-agent:/data:ro
+      - ./audit:/audit
+    command:
+      - "--addr=:8080"
+      - "--data=/data"
+      - "--audit-file=/audit/events.jsonl"
+      - "--dev"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Example: run conformance tests against the server
+  conformance:
+    build: .
+    entrypoint: ["oapctl"]
+    command: ["test", "--conformance"]
+    depends_on:
+      oap-server:
+        condition: service_healthy
+
+volumes:
+  audit:

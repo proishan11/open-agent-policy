@@ -1,0 +1,58 @@
+# Default values for OAP Helm chart
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/proishan11/oap-server
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+server:
+  # Address to bind
+  addr: ":8080"
+  # Data directory (mounted from ConfigMap or PVC)
+  dataDir: "/data"
+  # Audit file path
+  auditFile: "/audit/events.jsonl"
+  # Dev mode (disable in production)
+  devMode: false
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /v1/health
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /v1/health
+    port: 8080
+  initialDelaySeconds: 3
+  periodSeconds: 5
+
+# Persistent volume for audit logs
+audit:
+  enabled: true
+  storageClass: ""
+  size: 1Gi
+
+# ServiceAccount for workload identity
+serviceAccount:
+  create: true
+  name: oap-server
+  annotations: {}
