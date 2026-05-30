@@ -171,6 +171,15 @@ jobs:
     name: Dependency Review
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/dependency-review-action@v4
+        with:
+          show-openssf-scorecard: true
+          # github.com/jackc/puddle/v2 is a required transitive pgxpool
+          # dependency with a 2.9 Scorecard score. Dependency Review does not
+          # support package-specific Scorecard exceptions, so keep Scorecards
+          # visible while avoiding a noisy warning for this known dependency.
+          warn-on-openssf-scorecard-level: 2
