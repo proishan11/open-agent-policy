@@ -12,7 +12,9 @@
 //   - POST /v1/policies   — apply a policy
 //   - GET  /v1/policies   — list policies
 //   - GET  /v1/audit      — query audit events
-//   - GET  /v1/health     — health check
+//   - GET  /v1/health     — process liveness
+//   - GET  /v1/ready      — dependency readiness
+//   - GET  /metrics       — Prometheus text metrics
 //
 // Data flow for POST /v1/authorize:
 //

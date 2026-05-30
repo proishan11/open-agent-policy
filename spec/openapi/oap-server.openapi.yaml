@@ -27,6 +27,8 @@ tags:
     description: Policy management
   - name: authorize
     description: Runtime authorization decisions
+  - name: runtime
+    description: Runtime session and run management
   - name: simulate
     description: Policy simulation (dry-run)
   - name: delegations
@@ -336,6 +338,49 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   # ─── Authorization ─────────────────────────────────────────────────────
+  /v1/runtime/session:
+    post:
+      operationId: createRuntimeSession
+      tags: [runtime]
+      summary: Create an authenticated agent runtime session
+      description: |
+        Validates a runtime identity token against the registered agent's
+        identity bindings and returns a short-lived OAP session token.
+
+        For WIMSE bindings, callers present a Workload Identity Token as
+        `runtime_token` or `Workload-Identity-Token`, and a Workload Proof Token
+        as `workload_proof_token` or `Workload-Proof-Token`.
+      parameters:
+        - name: Workload-Identity-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: WIMSE Workload Identity Token alternative to `runtime_token`.
+        - name: Workload-Proof-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: WIMSE Workload Proof Token alternative to `workload_proof_token`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Runtime session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/authorize:
     post:
       operationId: authorize
@@ -474,16 +519,26 @@ paths:
       tags: [audit]
       summary: Query audit events
       parameters:
+        - name: agent_id
+          in: query
+          schema:
+            type: string
+          description: Filter by canonical agent ID
         - name: agent
           in: query
           schema:
             type: string
-          description: Filter by agent ID
-        - name: actor
+          description: Alias for agent_id
+        - name: actor_id
           in: query
           schema:
             type: string
           description: Filter by actor ID
+        - name: actor
+          in: query
+          schema:
+            type: string
+          description: Alias for actor_id
         - name: action
           in: query
           schema:
@@ -495,18 +550,50 @@ paths:
             type: string
             enum: [allow, allow_with_constraints, deny, require_approval, require_delegation, require_step_up_auth]
           description: Filter by decision type
+        - name: request_id
+          in: query
+          schema:
+            type: string
+          description: Filter by authorization request ID
+        - name: run_id
+          in: query
+          schema:
+            type: string
+          description: Filter by agent run ID
+        - name: resource_type
+          in: query
+          schema:
+            type: string
+          description: Filter by resource type
+        - name: resource_id
+          in: query
+          schema:
+            type: string
+          description: Filter by resource ID
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Events at or after this timestamp
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Events at or before this timestamp
         - name: since
           in: query
           schema:
             type: string
             format: date-time
-          description: Events after this timestamp
+          description: Alias for from
         - name: until
           in: query
           schema:
             type: string
             format: date-time
-          description: Events before this timestamp
+          description: Alias for to
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
       responses:
@@ -516,6 +603,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuditEventList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '501':
+          description: Audit query is not available for the configured sink
 
   # ─── Bundles ───────────────────────────────────────────────────────────
   /v1/bundles:
@@ -558,10 +649,11 @@ paths:
     get:
       operationId: healthCheck
       tags: [health]
-      summary: Server health check
+      summary: Server liveness check
+      description: Returns process liveness. Use /v1/ready for dependency readiness.
       responses:
         '200':
-          description: Server is healthy
+          description: Server process is alive
           content:
             application/json:
               schema:
@@ -572,10 +664,46 @@ paths:
                     enum: [healthy]
                   version:
                     type: string
-                  agents_count:
-                    type: integer
-                  policies_count:
-                    type: integer
+                  store_backend:
+                    type: string
+                  policy_backend:
+                    type: string
+                  uptime_seconds:
+                    type: number
+
+  /v1/ready:
+    get:
+      operationId: readinessCheck
+      tags: [health]
+      summary: Server readiness check
+      description: Verifies that required dependencies, including the configured store, are reachable before the server receives traffic.
+      responses:
+        '200':
+          description: Server is ready to receive traffic
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessStatus'
+        '503':
+          description: Server is alive but not ready to receive traffic
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessStatus'
+
+  /metrics:
+    get:
+      operationId: prometheusMetrics
+      tags: [health]
+      summary: Prometheus metrics
+      description: Exposes process-local Prometheus text metrics for authorization, audit, and readiness counters.
+      responses:
+        '200':
+          description: Prometheus text exposition
+          content:
+            text/plain:
+              schema:
+                type: string
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Components
@@ -626,6 +754,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Authentication or identity verification failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
 
   # ─── Schemas ─────────────────────────────────────────────────────────
   schemas:
@@ -641,6 +775,102 @@ components:
         details:
           type: object
           additionalProperties: true
+
+    ReadinessStatus:
+      type: object
+      required: [status, version, store_backend, policy_backend, components]
+      properties:
+        status:
+          type: string
+          enum: [ready, not_ready]
+        version:
+          type: string
+        store_backend:
+          type: string
+        policy_backend:
+          type: string
+        uptime_seconds:
+          type: number
+        components:
+          type: object
+          additionalProperties:
+            type: object
+            required: [status]
+            properties:
+              status:
+                type: string
+                enum: [ready, not_ready]
+              backend:
+                type: string
+              error:
+                type: string
+
+    CreateSessionRequest:
+      type: object
+      required: [agent_id]
+      additionalProperties: false
+      properties:
+        agent_id:
+          type: string
+          description: Canonical OAP agent ID.
+        runtime_token:
+          type: string
+          description: OIDC JWT, Kubernetes ServiceAccount JWT, SPIFFE JWT-SVID, or WIMSE Workload Identity Token.
+        workload_proof_token:
+          type: string
+          description: WIMSE Workload Proof Token bound to the WIT and this session request.
+        environment:
+          type: string
+        instance:
+          type: object
+          additionalProperties: false
+          properties:
+            environment:
+              type: string
+            host:
+              type: string
+            namespace:
+              type: string
+            pod:
+              type: string
+            image_digest:
+              type: string
+
+    AgentSession:
+      type: object
+      required: [session_id, agent_id, status, mode, created_at, expires_at, expires_in]
+      properties:
+        session_id:
+          type: string
+        agent_id:
+          type: string
+        status:
+          type: string
+          enum: [active, expired, revoked]
+        mode:
+          type: string
+          enum: [enforce, observe, warn]
+        instance:
+          type: object
+          properties:
+            environment:
+              type: string
+            host:
+              type: string
+            namespace:
+              type: string
+            pod:
+              type: string
+            image_digest:
+              type: string
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        expires_in:
+          type: integer
 
     # ── Authorization Request ──────────────────────────────────────────
     AuthorizationRequest:
@@ -775,7 +1005,7 @@ components:
                 type: string
         constraints:
           type: object
-          additionalProperties: true
+          additionalProperties: false
           properties:
             max_records:
               type: integer
@@ -783,12 +1013,19 @@ components:
               type: array
               items:
                 type: string
+            allowed_fields:
+              type: array
+              items:
+                type: string
             readonly:
               type: boolean
             time_window_seconds:
               type: integer
+            expires_in_seconds:
+              type: integer
         obligations:
           type: object
+          additionalProperties: false
           properties:
             audit:
               type: boolean
@@ -892,6 +1129,47 @@ components:
               type: array
               items:
                 type: string
+            workloadIdentity:
+              type: object
+              required: [id]
+              additionalProperties: false
+              properties:
+                id:
+                  type: string
+                  format: uri
+                  description: Stable workload identifier URI. Prefer spiffe:// when available.
+                type:
+                  type: string
+                  enum: [spiffe, wimse, custom_uri]
+                trustDomain:
+                  type: string
+                attestationLevel:
+                  type: string
+                  enum: [none, platform, hardware, supply_chain]
+            identityBindings:
+              type: array
+              description: Verifiable runtime credentials allowed to prove this agent identity.
+              items:
+                type: object
+                required: [type, issuer, subject]
+                additionalProperties: false
+                properties:
+                  type:
+                    type: string
+                    enum: [oidc_client, kubernetes_service_account, spiffe, wimse]
+                  provider:
+                    type: string
+                  issuer:
+                    type: string
+                  jwksUri:
+                    type: string
+                    format: uri
+                    description: Explicit JWKS or SPIFFE bundle endpoint when OIDC discovery is not available.
+                  subject:
+                    type: string
+                  audience:
+                    type: string
+                    description: Expected JWT audience. For WIMSE, an accepted WPT audience or deployment alias.
             runtime:
               type: object
               properties:
@@ -1187,13 +1465,74 @@ components:
                 type: string
         conditions:
           type: object
-          additionalProperties: true
+          additionalProperties: false
+          properties:
+            actorRequired:
+              type: boolean
+            actorType:
+              type: string
+              enum: [user, service, agent]
+            actorId:
+              type: string
+            actorGroups:
+              type: array
+              items:
+                type: string
+            environment:
+              type: string
+              enum: [development, staging, production]
+            minAuthStrength:
+              type: string
+              enum: [none, password, mfa, phishing_resistant_mfa]
+            timeWindow:
+              type: object
+              additionalProperties: false
+              properties:
+                after:
+                  type: string
+                before:
+                  type: string
+                daysOfWeek:
+                  type: array
+                  items:
+                    type: string
+                    enum: [mon, tue, wed, thu, fri, sat, sun]
+            delegationRequired:
+              type: boolean
         constraints:
           type: object
-          additionalProperties: true
+          additionalProperties: false
+          properties:
+            readonly:
+              type: boolean
+            maxRecords:
+              type: integer
+              minimum: 1
+            redact:
+              type: array
+              items:
+                type: string
+            allowedFields:
+              type: array
+              items:
+                type: string
+            timeWindowSeconds:
+              type: integer
+              minimum: 1
+            expiresIn:
+              type: string
         obligations:
           type: object
-          additionalProperties: true
+          additionalProperties: false
+          properties:
+            audit:
+              type: boolean
+            logFullRequest:
+              type: boolean
+            notify:
+              type: array
+              items:
+                type: string
         approval:
           type: object
           properties:
@@ -1327,7 +1666,27 @@ components:
             type: string
         constraints:
           type: object
-          additionalProperties: true
+          additionalProperties: false
+          properties:
+            max_records:
+              type: integer
+              minimum: 1
+            redact_fields:
+              type: array
+              items:
+                type: string
+            allowed_fields:
+              type: array
+              items:
+                type: string
+            readonly:
+              type: boolean
+            time_window_seconds:
+              type: integer
+              minimum: 1
+            expires_in_seconds:
+              type: integer
+              minimum: 1
         grant_id:
           type: string
         request_id:
