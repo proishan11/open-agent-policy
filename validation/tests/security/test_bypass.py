@@ -1,34 +1,63 @@
-"""Security tests: Direct API bypass prevention.
-
-Validates that resource APIs are accessible directly (documenting the gap)
-and that OAP-governed paths enforce authorization.
-"""
+"""Security tests: direct resource API bypass prevention."""
 
 from __future__ import annotations
 
-import pytest
-from conftest import OAPTestClient, TicketAPIClient, CustomerAPIClient
+from conftest import CustomerAPIClient, OAPTestClient, TicketAPIClient, grant_for
 
 TICKET_AGENT = "agent://support/ticket-assistant"
 
 
 class TestDirectBypass:
-    def test_ticket_api_direct_access_baseline(self, ticket_api: TicketAPIClient):
-        """
-        Baseline: ticket API is directly accessible without OAP.
-        This documents the current state. After hardening (network policy
-        or grant validation), this should return 401/403.
-        """
-        ticket = ticket_api.get_ticket("T-100")
+    def test_ticket_api_rejects_missing_grant(self, ticket_api: TicketAPIClient):
+        """Ticket API is not directly accessible without an OAP grant."""
+        resp = ticket_api.get_ticket_raw("T-100")
+        assert resp.status_code == 401
+
+    def test_customer_api_rejects_missing_grant(self, customer_api: CustomerAPIClient):
+        """Customer API is not directly accessible without an OAP grant."""
+        resp = customer_api.get_customer_raw("C-100")
+        assert resp.status_code == 401
+
+    def test_ticket_api_accepts_scoped_grant(
+        self, oap: OAPTestClient, ticket_api: TicketAPIClient
+    ):
+        """A valid OAP grant unlocks only the scoped ticket resource."""
+        grant = grant_for(
+            oap,
+            action="ticket.read",
+            resource_type="support.ticket",
+            resource_id="T-100",
+        )
+        ticket = ticket_api.get_ticket("T-100", grant)
         assert ticket["id"] == "T-100"
 
-    def test_customer_api_direct_access_baseline(self, customer_api: CustomerAPIClient):
-        """
-        Baseline: customer API is directly accessible without OAP.
-        Documents the gap for future hardening.
-        """
-        customer = customer_api.get_customer("C-100")
-        assert customer["id"] == "C-100"
+    def test_ticket_api_rejects_wrong_resource_grant(
+        self, oap: OAPTestClient, ticket_api: TicketAPIClient
+    ):
+        """A grant for T-100 cannot be replayed against T-200."""
+        grant = grant_for(
+            oap,
+            action="ticket.read",
+            resource_type="support.ticket",
+            resource_id="T-100",
+        )
+        resp = ticket_api.get_ticket_raw("T-200", grant)
+        assert resp.status_code == 403
+
+    def test_customer_api_applies_redaction_constraints(
+        self, oap: OAPTestClient, customer_api: CustomerAPIClient
+    ):
+        """Resource-side enforcement applies grant constraints, not just allow/deny."""
+        grant = grant_for(
+            oap,
+            action="customer.read",
+            resource_type="crm.customer",
+            resource_id="C-100",
+        )
+        customer = customer_api.get_customer("C-100", grant)
+        assert customer["tax_identifier"] == "<redacted>"
+        assert customer["billing_account"] == "<redacted>"
+        assert customer["bank_account"] == "<redacted>"
 
     def test_oap_rejects_unauthenticated(self, oap_unauthenticated: OAPTestClient):
         """OAP rejects requests without a valid agent token."""

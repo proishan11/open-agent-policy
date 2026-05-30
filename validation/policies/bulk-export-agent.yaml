@@ -1,4 +1,4 @@
-apiVersion: oap/v1alpha1
+apiVersion: oap.dev/v1alpha1
 kind: Agent
 metadata:
   name: bulk-export-agent
@@ -11,5 +11,3 @@ spec:
   capabilities:
     - ticket.bulk_export
     - customer.bulk_export
-  runtime:
-    language: python

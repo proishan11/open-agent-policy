@@ -7,7 +7,7 @@ No mocks.
 from __future__ import annotations
 
 import os
-import time
+import uuid
 from dataclasses import dataclass
 from typing import Optional
 
@@ -42,6 +42,7 @@ class TokenResponse:
 @dataclass
 class AuthorizationResult:
     status_code: int
+    request_id: str
     body: dict
     decision: str
     reason: str
@@ -128,12 +129,16 @@ class OAPTestClient:
     def authorize(
         self, agent_id: str, actor_id: str, action: str,
         resource_type: str = "", resource_id: str = "",
+        resource_owner: str = "", resource_classification: str = "",
+        resource_environment: str = "",
         context: Optional[dict] = None,
         bearer_token: str = "",
+        request_id: str = "",
     ) -> AuthorizationResult:
         """Send real authorization request to OAP server with agent token."""
+        request_id = request_id or f"val-{uuid.uuid4()}"
         req_body = {
-            "request_id": f"val-{int(time.time() * 1000)}",
+            "request_id": request_id,
             "subject": {
                 "type": "agent",
                 "agent_id": agent_id,
@@ -145,8 +150,14 @@ class OAPTestClient:
             },
             "context": context or {},
         }
+        if resource_owner:
+            req_body["resource"]["owner"] = resource_owner
+        if resource_classification:
+            req_body["resource"]["classification"] = resource_classification
+        if resource_environment:
+            req_body["resource"]["environment"] = resource_environment
         if actor_id:
-            req_body["subject"]["actor"] = actor_id
+            req_body["actor"] = {"type": "user", "id": actor_id}
 
         resp = self.client.post(
             f"{self.base_url}/v1/authorize",
@@ -156,6 +167,7 @@ class OAPTestClient:
         body = resp.json()
         return AuthorizationResult(
             status_code=resp.status_code,
+            request_id=request_id,
             body=body,
             decision=body.get("decision", ""),
             reason=body.get("reason", ""),
@@ -167,12 +179,16 @@ class OAPTestClient:
     def authorize_raw(
         self, agent_id: str, actor_id: str, action: str,
         resource_type: str = "", resource_id: str = "",
+        resource_owner: str = "", resource_classification: str = "",
+        resource_environment: str = "",
         context: Optional[dict] = None,
         bearer_token: str = "",
+        request_id: str = "",
     ) -> httpx.Response:
         """Send authorize request and return raw HTTP response (for 401 tests)."""
+        request_id = request_id or f"val-{uuid.uuid4()}"
         req_body = {
-            "request_id": f"val-{int(time.time() * 1000)}",
+            "request_id": request_id,
             "subject": {
                 "type": "agent",
                 "agent_id": agent_id,
@@ -181,13 +197,34 @@ class OAPTestClient:
             "resource": {"type": resource_type, "id": resource_id},
             "context": context or {},
         }
+        if resource_owner:
+            req_body["resource"]["owner"] = resource_owner
+        if resource_classification:
+            req_body["resource"]["classification"] = resource_classification
+        if resource_environment:
+            req_body["resource"]["environment"] = resource_environment
         if actor_id:
-            req_body["subject"]["actor"] = actor_id
+            req_body["actor"] = {"type": "user", "id": actor_id}
         return self.client.post(
             f"{self.base_url}/v1/authorize",
             json=req_body,
             headers=self._auth_headers(bearer_token),
         )
+
+    def audit_events(self, **filters) -> dict:
+        """GET /v1/audit with indexed filters."""
+        params = {
+            key: value
+            for key, value in filters.items()
+            if value is not None and value != ""
+        }
+        resp = self.client.get(
+            f"{self.base_url}/v1/audit",
+            params=params,
+            headers=self._auth_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
 
     def create_run(
         self, session_id: str, actor_type: str = "",
@@ -253,13 +290,37 @@ class TicketAPIClient:
         self.base_url = base_url
         self.client = httpx.Client(timeout=15.0)
 
-    def get_ticket(self, ticket_id: str) -> dict:
-        resp = self.client.get(f"{self.base_url}/api/tickets/{ticket_id}")
+    def _grant_headers(self, grant_token: str = "") -> dict:
+        if grant_token:
+            return {"X-OAP-Grant-Token": grant_token}
+        return {}
+
+    def get_ticket_raw(self, ticket_id: str, grant_token: str = "") -> httpx.Response:
+        return self.client.get(
+            f"{self.base_url}/api/tickets/{ticket_id}",
+            headers=self._grant_headers(grant_token),
+        )
+
+    def get_ticket(self, ticket_id: str, grant_token: str = "") -> dict:
+        resp = self.get_ticket_raw(ticket_id, grant_token)
         resp.raise_for_status()
         return resp.json()
 
-    def list_tickets(self, **params) -> dict:
-        resp = self.client.get(f"{self.base_url}/api/tickets", params=params)
+    def list_tickets(self, grant_token: str = "", **params) -> dict:
+        resp = self.client.get(
+            f"{self.base_url}/api/tickets",
+            params=params,
+            headers=self._grant_headers(grant_token),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def update_ticket(self, ticket_id: str, grant_token: str = "", **payload) -> dict:
+        resp = self.client.patch(
+            f"{self.base_url}/api/tickets/{ticket_id}",
+            json=payload,
+            headers=self._grant_headers(grant_token),
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -269,10 +330,41 @@ class CustomerAPIClient:
         self.base_url = base_url
         self.client = httpx.Client(timeout=15.0)
 
-    def get_customer(self, customer_id: str) -> dict:
-        resp = self.client.get(f"{self.base_url}/api/customers/{customer_id}")
+    def _grant_headers(self, grant_token: str = "") -> dict:
+        if grant_token:
+            return {"X-OAP-Grant-Token": grant_token}
+        return {}
+
+    def get_customer_raw(self, customer_id: str, grant_token: str = "") -> httpx.Response:
+        return self.client.get(
+            f"{self.base_url}/api/customers/{customer_id}",
+            headers=self._grant_headers(grant_token),
+        )
+
+    def get_customer(self, customer_id: str, grant_token: str = "") -> dict:
+        resp = self.get_customer_raw(customer_id, grant_token)
         resp.raise_for_status()
         return resp.json()
+
+
+def grant_for(
+    oap: OAPTestClient,
+    *,
+    action: str,
+    resource_type: str,
+    resource_id: str = "",
+    actor_id: str = "alice@company.test",
+) -> str:
+    result = oap.authorize(
+        agent_id="agent://support/ticket-assistant",
+        actor_id=actor_id,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+    )
+    assert result.decision in ("allow", "allow_with_constraints"), result.body
+    assert result.grant is not None, result.body
+    return result.grant["token"]
 
 
 class ApprovalAPIClient:

@@ -1,4 +1,4 @@
-apiVersion: oap/v1alpha1
+apiVersion: oap.dev/v1alpha1
 kind: AgentPolicy
 metadata:
   name: support-ticket-agent-policy
@@ -14,8 +14,8 @@ spec:
         - ticket.read
         - ticket.summarize
       constraints:
-        max_records: 25
-        redact_fields:
+        maxRecords: 25
+        redact:
           - payment_card
           - government_id
           - api_key
@@ -26,15 +26,36 @@ spec:
       actions:
         - customer.read
       constraints:
-        redact_fields:
+        redact:
           - tax_identifier
           - billing_account
           - bank_account
 
-    # Allow posting to internal support channel
+    # External customer messaging must go through human approval first.
+    - effect: require_approval
+      actions:
+        - message.send
+      resources:
+        types:
+          - slack.channel
+        owners:
+          - channel:external
+      approval:
+        approvers:
+          - group:support-managers
+        minApprovals: 1
+        expiresIn: 30m
+      reason: "External customer updates require support manager approval"
+
+    # Allow posting to internal support channels without approval.
     - effect: allow
       actions:
         - message.send
+      resources:
+        types:
+          - slack.channel
+        owners:
+          - channel:internal
 
     # Allow creating escalation issues
     - effect: allow
@@ -46,7 +67,7 @@ spec:
       actions:
         - ticket.update
       constraints:
-        allowed_fields:
+        allowedFields:
           - status
           - priority
           - assignee

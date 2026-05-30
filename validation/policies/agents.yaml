@@ -1,4 +1,4 @@
-apiVersion: oap/v1alpha1
+apiVersion: oap.dev/v1alpha1
 kind: Agent
 metadata:
   name: ticket-assistant
@@ -12,7 +12,19 @@ spec:
     looks up customers, posts to Slack, creates escalation issues,
     and updates ticket status. Governed by OAP policy.
 
+  workloadIdentity:
+    id: spiffe://oap.local/ns/support/sa/ticket-assistant
+    type: spiffe
+    trustDomain: oap.local
+    attestationLevel: platform
+
   identityBindings:
+    - type: spiffe
+      provider: spire
+      issuer: "https://spire.oap.local"
+      jwksUri: "https://spire.oap.local/.well-known/jwks.json"
+      subject: "spiffe://oap.local/ns/support/sa/ticket-assistant"
+      audience: "oap-server"
     - type: oidc_client
       provider: keycloak
       issuer: "http://keycloak:8080/realms/oap-validation"
@@ -25,6 +37,4 @@ spec:
     - message.send
     - escalation.issue.create
     - ticket.update
-  runtime:
-    framework: langchain
-    language: python
+  framework: langchain

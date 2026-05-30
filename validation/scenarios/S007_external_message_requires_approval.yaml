@@ -16,6 +16,7 @@ task:
   resource:
     type: slack.channel
     id: "slack:#external-customer-updates"
+    owner: channel:external
     classification: restricted
 approval:
   approver:

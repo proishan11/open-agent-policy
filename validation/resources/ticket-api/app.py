@@ -11,8 +11,10 @@ from datetime import datetime
 from typing import Optional
 
 import asyncpg
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel
+
+from oap_guard import constrained_limit, ensure_allowed_fields, require_oap_grant
 
 
 DATABASE_URL = os.environ.get(
@@ -56,7 +58,15 @@ async def list_tickets(
     priority: Optional[str] = None,
     assigned_to: Optional[str] = None,
     limit: int = Query(default=25, le=100),
+    x_oap_grant_token: Optional[str] = Header(default=None, alias="X-OAP-Grant-Token"),
 ):
+    grant = await require_oap_grant(
+        x_oap_grant_token,
+        action="ticket.read",
+        resource_type="support.ticket",
+    )
+    limit = constrained_limit(grant, limit)
+
     query = "SELECT * FROM tickets WHERE 1=1"
     params = []
     idx = 1
@@ -81,7 +91,16 @@ async def list_tickets(
 
 
 @app.get("/api/tickets/{ticket_id}")
-async def get_ticket(ticket_id: str):
+async def get_ticket(
+    ticket_id: str,
+    x_oap_grant_token: Optional[str] = Header(default=None, alias="X-OAP-Grant-Token"),
+):
+    await require_oap_grant(
+        x_oap_grant_token,
+        action="ticket.read",
+        resource_type="support.ticket",
+        resource_id=ticket_id,
+    )
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT * FROM tickets WHERE id = $1", ticket_id)
     if not row:
@@ -90,7 +109,20 @@ async def get_ticket(ticket_id: str):
 
 
 @app.patch("/api/tickets/{ticket_id}")
-async def update_ticket(ticket_id: str, update: TicketUpdate):
+async def update_ticket(
+    ticket_id: str,
+    update: TicketUpdate,
+    x_oap_grant_token: Optional[str] = Header(default=None, alias="X-OAP-Grant-Token"),
+):
+    grant = await require_oap_grant(
+        x_oap_grant_token,
+        action="ticket.update",
+        resource_type="support.ticket",
+        resource_id=ticket_id,
+    )
+    update_fields = update.model_dump(exclude_none=True).keys()
+    ensure_allowed_fields(grant, update_fields)
+
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT * FROM tickets WHERE id = $1", ticket_id)
         if not row:
@@ -122,7 +154,16 @@ async def update_ticket(ticket_id: str, update: TicketUpdate):
 
 
 @app.post("/api/tickets/{ticket_id}/escalate")
-async def escalate_ticket(ticket_id: str):
+async def escalate_ticket(
+    ticket_id: str,
+    x_oap_grant_token: Optional[str] = Header(default=None, alias="X-OAP-Grant-Token"),
+):
+    await require_oap_grant(
+        x_oap_grant_token,
+        action="escalation.issue.create",
+        resource_type="support.ticket",
+        resource_id=ticket_id,
+    )
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT * FROM tickets WHERE id = $1", ticket_id)
         if not row:
@@ -135,7 +176,16 @@ async def escalate_ticket(ticket_id: str):
 
 
 @app.delete("/api/tickets/{ticket_id}")
-async def delete_ticket(ticket_id: str):
+async def delete_ticket(
+    ticket_id: str,
+    x_oap_grant_token: Optional[str] = Header(default=None, alias="X-OAP-Grant-Token"),
+):
+    await require_oap_grant(
+        x_oap_grant_token,
+        action="ticket.delete",
+        resource_type="support.ticket",
+        resource_id=ticket_id,
+    )
     async with pool.acquire() as conn:
         row = await conn.fetchrow("DELETE FROM tickets WHERE id = $1 RETURNING id", ticket_id)
     if not row:

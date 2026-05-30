@@ -16,6 +16,7 @@ task:
   resource:
     type: slack.channel
     id: "slack:#support-triage"
+    owner: channel:internal
     classification: internal
 expected:
   decision: allow

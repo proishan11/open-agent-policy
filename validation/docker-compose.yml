@@ -6,6 +6,7 @@
 #   keycloak      — Real IdP (OIDC/OAuth)
 #   postgres      — Shared Postgres for APIs + OAP + audit
 #   oap-server    — OAP policy evaluation server
+#   opa           — Optional OPA sidecar for --profile opa-test
 #   ticket-api    — Support ticket REST API
 #   customer-api  — Customer/CRM REST API
 #   approval-api  — Approval workflow API
@@ -72,8 +73,11 @@ services:
     command:
       - "--addr=:8080"
       - "--data=/data"
+      - "--store=postgres"
+      - "--postgres-dsn=postgres://oap:oap@postgres:5432/oap?sslmode=disable"
       - "--audit-file=/audit/events.jsonl"
       - "--issuer=http://keycloak:8080/realms/oap-validation"
+      - "--grant-key=validation-grant-signing-key-change-me"
       - "--dev"
     depends_on:
       postgres:
@@ -86,6 +90,91 @@ services:
       timeout: 3s
       retries: 10
 
+  # ── OPA Sidecar Profile ─────────────────────────────────────────────
+  opa:
+    image: openpolicyagent/opa:1.4.2-static
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "/policies/policy.rego"
+    ports:
+      - "8181:8181"
+    volumes:
+      - ./opa:/policies:ro
+    profiles:
+      - opa-test
+
+  oap-server-opa:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "18080:8080"
+    volumes:
+      - ./policies:/data:ro
+      - audit-logs-opa:/audit
+    command:
+      - "--addr=:8080"
+      - "--data=/data"
+      - "--store=postgres"
+      - "--postgres-dsn=postgres://oap:oap@postgres:5432/oap?sslmode=disable"
+      - "--audit-file=/audit/events.jsonl"
+      - "--issuer=http://keycloak:8080/realms/oap-validation"
+      - "--grant-key=validation-grant-signing-key-change-me"
+      - "--policy-backend=opa"
+      - "--opa-url=http://opa:8181"
+      - "--opa-policy-path=v1/data/oap/authz"
+      - "--dev"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      opa:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    profiles:
+      - opa-test
+
+  oap-server-opa-unavailable:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "18081:8080"
+    volumes:
+      - ./policies:/data:ro
+      - audit-logs-opa-unavailable:/audit
+    command:
+      - "--addr=:8080"
+      - "--data=/data"
+      - "--store=postgres"
+      - "--postgres-dsn=postgres://oap:oap@postgres:5432/oap?sslmode=disable"
+      - "--audit-file=/audit/events.jsonl"
+      - "--issuer=http://keycloak:8080/realms/oap-validation"
+      - "--grant-key=validation-grant-signing-key-change-me"
+      - "--policy-backend=opa"
+      - "--opa-url=http://127.0.0.1:9"
+      - "--opa-policy-path=v1/data/oap/authz"
+      - "--dev"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    profiles:
+      - opa-test
+
   # ── Ticket API ───────────────────────────────────────────────────────
   ticket-api:
     build: ./resources/ticket-api
@@ -93,14 +182,39 @@ services:
       - "9100:9100"
     environment:
       DATABASE_URL: postgresql://oap:oap@postgres:5432/oap
+      OAP_SERVER_URL: http://oap-server:8080
+      OAP_REQUIRE_GRANTS: "true"
     depends_on:
       postgres:
+        condition: service_healthy
+      oap-server:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9100/health')"]
       interval: 5s
       timeout: 3s
       retries: 10
+
+  ticket-api-opa:
+    build: ./resources/ticket-api
+    ports:
+      - "19100:9100"
+    environment:
+      DATABASE_URL: postgresql://oap:oap@postgres:5432/oap
+      OAP_SERVER_URL: http://oap-server-opa:8080
+      OAP_REQUIRE_GRANTS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      oap-server-opa:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9100/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    profiles:
+      - opa-test
 
   # ── Customer API ─────────────────────────────────────────────────────
   customer-api:
@@ -109,14 +223,39 @@ services:
       - "9101:9101"
     environment:
       DATABASE_URL: postgresql://oap:oap@postgres:5432/oap
+      OAP_SERVER_URL: http://oap-server:8080
+      OAP_REQUIRE_GRANTS: "true"
     depends_on:
       postgres:
+        condition: service_healthy
+      oap-server:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9101/health')"]
       interval: 5s
       timeout: 3s
       retries: 10
+
+  customer-api-opa:
+    build: ./resources/customer-api
+    ports:
+      - "19101:9101"
+    environment:
+      DATABASE_URL: postgresql://oap:oap@postgres:5432/oap
+      OAP_SERVER_URL: http://oap-server-opa:8080
+      OAP_REQUIRE_GRANTS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      oap-server-opa:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9101/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    profiles:
+      - opa-test
 
   # ── Approval API ─────────────────────────────────────────────────────
   approval-api:
@@ -163,6 +302,39 @@ services:
     profiles:
       - test
 
+  e2e-tests-opa:
+    build: ./tests
+    command: ["pytest", "-v", "--tb=short", "opa/"]
+    environment:
+      OAP_SERVER_URL: http://oap-server-opa:8080
+      OAP_FAIL_CLOSED_SERVER_URL: http://oap-server-opa-unavailable:8080
+      OPA_URL: http://opa:8181
+      TICKET_API_URL: http://ticket-api-opa:9100
+      CUSTOMER_API_URL: http://customer-api-opa:9101
+      APPROVAL_API_URL: http://approval-api:9102
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: oap-validation
+      KEYCLOAK_CLIENT_ID: validation-tests
+      KEYCLOAK_CLIENT_SECRET: validation-tests-secret
+      AGENT_CLIENT_ID: support-agent
+      AGENT_CLIENT_SECRET: support-agent-secret
+      DATABASE_URL: postgresql://oap:oap@postgres:5432/oap
+    depends_on:
+      oap-server-opa:
+        condition: service_healthy
+      oap-server-opa-unavailable:
+        condition: service_healthy
+      ticket-api-opa:
+        condition: service_healthy
+      customer-api-opa:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    profiles:
+      - opa-test
+
 volumes:
   pgdata:
   audit-logs:
+  audit-logs-opa:
+  audit-logs-opa-unavailable:

@@ -10,7 +10,9 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 import asyncpg
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
+
+from oap_guard import constrained_limit, redact_record, require_oap_grant
 
 
 DATABASE_URL = os.environ.get(
@@ -43,7 +45,15 @@ async def list_customers(
     region: Optional[str] = None,
     classification: Optional[str] = None,
     limit: int = Query(default=25, le=100),
+    x_oap_grant_token: Optional[str] = Header(default=None, alias="X-OAP-Grant-Token"),
 ):
+    grant = await require_oap_grant(
+        x_oap_grant_token,
+        action="customer.read",
+        resource_type="crm.customer",
+    )
+    limit = constrained_limit(grant, limit)
+
     query = "SELECT * FROM customers WHERE 1=1"
     params = []
     idx = 1
@@ -60,18 +70,27 @@ async def list_customers(
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(query, *params)
-    return {"customers": [dict(r) for r in rows], "total": len(rows)}
+    return {"customers": [redact_record(grant, dict(r)) for r in rows], "total": len(rows)}
 
 
 @app.get("/api/customers/{customer_id}")
-async def get_customer(customer_id: str):
+async def get_customer(
+    customer_id: str,
+    x_oap_grant_token: Optional[str] = Header(default=None, alias="X-OAP-Grant-Token"),
+):
+    grant = await require_oap_grant(
+        x_oap_grant_token,
+        action="customer.read",
+        resource_type="crm.customer",
+        resource_id=customer_id,
+    )
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT * FROM customers WHERE id = $1", customer_id
         )
     if not row:
         raise HTTPException(404, f"Customer {customer_id} not found")
-    return dict(row)
+    return redact_record(grant, dict(row))
 
 
 if __name__ == "__main__":

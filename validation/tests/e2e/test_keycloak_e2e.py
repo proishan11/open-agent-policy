@@ -14,6 +14,7 @@ from conftest import (
     TicketAPIClient,
     CustomerAPIClient,
     ApprovalAPIClient,
+    grant_for,
 )
 
 TICKET_AGENT = "agent://support/ticket-assistant"
@@ -46,17 +47,30 @@ class TestS001HappyPath:
         )
         assert result.decision in ("allow", "allow_with_constraints")
 
-    def test_ticket_api_returns_data(self, ticket_api: TicketAPIClient):
-        """Ticket API returns real data for T-100."""
-        ticket = ticket_api.get_ticket("T-100")
+    def test_ticket_api_returns_data(self, oap: OAPTestClient, ticket_api: TicketAPIClient):
+        """Ticket API returns real data for T-100 when the agent presents an OAP grant."""
+        grant = grant_for(
+            oap,
+            action="ticket.read",
+            resource_type="support.ticket",
+            resource_id="T-100",
+        )
+        ticket = ticket_api.get_ticket("T-100", grant)
         assert ticket["id"] == "T-100"
         assert ticket["assigned_to"] == "alice@company.test"
 
-    def test_customer_api_returns_data(self, customer_api: CustomerAPIClient):
-        """Customer API returns real data for C-100."""
-        customer = customer_api.get_customer("C-100")
+    def test_customer_api_returns_data(self, oap: OAPTestClient, customer_api: CustomerAPIClient):
+        """Customer API returns redacted data for C-100 when the grant permits access."""
+        grant = grant_for(
+            oap,
+            action="customer.read",
+            resource_type="crm.customer",
+            resource_id="C-100",
+        )
+        customer = customer_api.get_customer("C-100", grant)
         assert customer["id"] == "C-100"
         assert customer["region"] == "US"
+        assert customer["tax_identifier"] == "<redacted>"
 
 
 # ── S002: Cross-user ticket access denied ─────────────────────────────
@@ -147,6 +161,7 @@ class TestS006InternalMessageAllowed:
             action="message.send",
             resource_type="slack.channel",
             resource_id="slack:#support-triage",
+            resource_owner="channel:internal",
         )
         assert result.decision in ("allow", "allow_with_constraints")
 
@@ -155,17 +170,17 @@ class TestS006InternalMessageAllowed:
 
 class TestS007ExternalMessageRequiresApproval:
     def test_external_message_without_approval(self, oap: OAPTestClient):
-        """Post to external channel without approval — should require approval or allow."""
+        """Post to external channel without approval — must require approval."""
         result = oap.authorize(
             agent_id=TICKET_AGENT,
             actor_id="alice@company.test",
             action="message.send",
             resource_type="slack.channel",
             resource_id="slack:#external-customer-updates",
-            context={"channel_classification": "restricted"},
+            resource_owner="channel:external",
         )
-        # Documents expected behavior
-        assert result.decision in ("require_approval", "allow", "allow_with_constraints")
+        assert result.decision == "require_approval"
+        assert "group:support-managers" in result.body["approval"]["approvers"]
 
 
 # ── S008: Approval scope mismatch denied ──────────────────────────────
@@ -363,16 +378,13 @@ class TestS013GrantReplayDenied:
 # ── S014: Direct API bypass ───────────────────────────────────────────
 
 class TestS014DirectAPIBypass:
-    def test_ticket_api_accessible_without_oap(self, ticket_api: TicketAPIClient):
+    def test_ticket_api_rejects_direct_access_without_oap_grant(self, ticket_api: TicketAPIClient):
         """
-        Documents current state: ticket API is directly accessible.
-        In a production-hardened env, this should be blocked by network policy
-        or grant validation. This test documents the baseline.
+        Production-like resource APIs require OAP grants. Direct access without
+        X-OAP-Grant-Token must be blocked.
         """
-        ticket = ticket_api.get_ticket("T-100")
-        # Currently accessible — this documents the gap.
-        # After hardening, this should raise or return 401/403.
-        assert ticket["id"] == "T-100"
+        resp = ticket_api.get_ticket_raw("T-100")
+        assert resp.status_code == 401
 
 
 # ── S015: Escalation allowed, settings denied ─────────────────────────
