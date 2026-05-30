@@ -3,6 +3,8 @@
 Wraps a tool function so that every invocation is authorized against
 OAP before execution. Denied calls raise PermissionDeniedError.
 Constrained calls inject an ``oap_constraints`` kwarg.
+Allowed calls with scoped grants inject ``oap_grant_token`` when the wrapped
+function accepts it.
 
 Example::
 
@@ -13,6 +15,7 @@ Example::
     @protect(client, agent_id="agent://finance/reconciler", action="erp.invoice.read")
     def read_invoice(invoice_id: str, **kwargs) -> dict:
         constraints = kwargs.get("oap_constraints", {})
+        grant_token = kwargs.get("oap_grant_token")
         max_records = constraints.get("max_records", 100)
         redact = constraints.get("redact_fields", [])
         # ... apply constraints to query ...
@@ -23,6 +26,7 @@ and action. If the decision is:
 
 - **allow**: calls the function normally
 - **allow_with_constraints**: injects ``oap_constraints`` into kwargs, then calls
+- **allow/allow_with_constraints with grant**: injects ``oap_grant_token`` when accepted
 - **deny**: raises PermissionDeniedError
 - **require_approval**: raises ApprovalRequiredError
 """
@@ -30,6 +34,7 @@ and action. If the decision is:
 from __future__ import annotations
 
 import functools
+import inspect
 from typing import Any, Callable
 
 from open_agent_policy.client import OAPClient
@@ -62,6 +67,14 @@ def protect(
     def decorator(func: Callable) -> Callable:
         resolved_action = action or func.__name__
         resolved_tool = tool_name or func.__name__
+        signature = inspect.signature(func)
+        accepts_kwargs = any(
+            param.kind == inspect.Parameter.VAR_KEYWORD
+            for param in signature.parameters.values()
+        )
+
+        def can_accept_kwarg(name: str) -> bool:
+            return accepts_kwargs or name in signature.parameters
 
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -98,9 +111,14 @@ def protect(
                     expires_in_seconds=decision.approval.get("expires_in_seconds", 0),
                 )
 
-            # Inject constraints into kwargs if present
-            if decision.constraints:
+            # Inject enforcement metadata when the wrapped tool can receive it.
+            if decision.constraints and can_accept_kwarg("oap_constraints"):
                 kwargs["oap_constraints"] = decision.constraints
+            if decision.grant:
+                if can_accept_kwarg("oap_grant_token"):
+                    kwargs["oap_grant_token"] = decision.grant.token
+                if can_accept_kwarg("oap_grant"):
+                    kwargs["oap_grant"] = decision.grant
 
             return func(*args, **kwargs)
 

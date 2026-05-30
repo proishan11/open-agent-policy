@@ -1,4 +1,4 @@
-apiVersion: oap/v1alpha1
+apiVersion: oap.dev/v1alpha1
 kind: AgentPolicy
 metadata:
   name: support-agent-policy
@@ -13,7 +13,7 @@ spec:
         - tickets.read
         - tickets.list
       constraints:
-        max_records: 10
+        maxRecords: 10
         readonly: true
 
     # Allow updating ticket status and priority
@@ -21,7 +21,7 @@ spec:
       actions:
         - tickets.update
       constraints:
-        allowed_fields:
+        allowedFields:
           - status
           - priority
           - assignee
@@ -32,39 +32,29 @@ spec:
         - customers.read
       constraints:
         readonly: true
-        redact_fields:
+        redact:
           - ssn
           - credit_card
           - bank_account
-        max_records: 5
+        maxRecords: 5
 
-    # Allow escalation only for P1 and P2 tickets
+    # Allow escalation. Priority checks are enforced by the ticket API until
+    # OAP has first-class resource attribute conditions.
     - effect: allow
       actions:
         - tickets.escalate
-      conditions:
-        priorityIn:
-          - P1
-          - P2
 
-    # Sending email to internal recipients is allowed
-    - effect: allow
-      actions:
-        - notifications.send_email
-      conditions:
-        recipientDomain: "@company.internal"
-
-    # Sending email to external recipients requires approval
+    # Sending email requires approval. Recipient-based policy needs resource
+    # attribute conditions, which are intentionally not implied by this rule.
     - effect: require_approval
       actions:
         - notifications.send_email
-      conditions:
-        recipientExternal: true
       approval:
         approvers:
           - "group:support-leads"
-        maxWaitSeconds: 1800
-        reason: "External email requires support lead approval"
+        minApprovals: 1
+        expiresIn: 30m
+      reason: "Email notifications require support lead approval"
 
     # Explicitly deny ticket deletion — no exceptions
     - effect: deny

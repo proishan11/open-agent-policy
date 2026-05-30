@@ -38,6 +38,19 @@ class TestDecision:
         assert d.is_allowed
         assert d.constraints["max_records"] == 25
 
+    def test_from_dict_grant(self):
+        d = Decision.from_dict({
+            "decision": "allow",
+            "grant": {
+                "grant_id": "grant-1",
+                "token": "jwt-token",
+                "expires_in_seconds": 300,
+            },
+        })
+        assert d.grant is not None
+        assert d.grant.token == "jwt-token"
+        assert d.grant.expires_in_seconds == 300
+
     def test_from_dict_require_approval(self):
         d = Decision.from_dict({
             "decision": "require_approval",
@@ -168,6 +181,10 @@ class TestRemoteMode:
             action="db.read",
             resource_type="database",
             resource_id="users-table",
+            resource_owner="group:data-platform",
+            resource_classification="restricted",
+            resource_environment="production",
+            resource_attributes={"tenant": "acme"},
             tool_name="query_db",
             tool_protocol="mcp",
             actor_type="user",
@@ -183,11 +200,31 @@ class TestRemoteMode:
         assert body["action"]["name"] == "db.read"
         assert body["resource"]["type"] == "database"
         assert body["resource"]["id"] == "users-table"
+        assert body["resource"]["owner"] == "group:data-platform"
+        assert body["resource"]["classification"] == "restricted"
+        assert body["resource"]["environment"] == "production"
+        assert body["resource"]["attributes"]["tenant"] == "acme"
         assert body["tool"]["name"] == "query_db"
         assert body["tool"]["protocol"] == "mcp"
         assert body["actor"]["type"] == "user"
         assert body["actor"]["id"] == "user:alice"
         assert body["context"]["run_id"] == "run-123"
+
+    def test_validate_grant(self, httpx_mock):
+        httpx_mock.add_response(
+            url="http://localhost:8080/v1/grants/validate",
+            json={
+                "valid": True,
+                "agent_id": "agent://test/agent",
+                "action": "db.read",
+                "resource_type": "database",
+                "resource_id": "users-table",
+            },
+        )
+        client = OAPClient(server_url="http://localhost:8080")
+        result = client.validate_grant("jwt-token")
+        assert result["valid"] is True
+        assert result["action"] == "db.read"
 
 
 # --- Helpers ---

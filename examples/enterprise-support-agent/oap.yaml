@@ -1,10 +1,10 @@
-apiVersion: oap/v1alpha1
+apiVersion: oap.dev/v1alpha1
 kind: Agent
 metadata:
   name: support-ticket-agent
   namespace: support
 spec:
-  owner: support-engineering
+  owner: group:support-engineering
   type: chat_agent
   riskTier: medium
   description: >
@@ -13,10 +13,21 @@ spec:
     OAP policy with field-level redaction and approval workflows.
   capabilities:
     - tickets.read
+    - tickets.list
     - tickets.update
     - tickets.escalate
     - customers.read
     - notifications.send_email
-  runtime:
-    framework: langchain
-    language: python
+  workloadIdentity:
+    id: spiffe://oap.local/ns/support/sa/support-ticket-agent
+    type: spiffe
+    trustDomain: oap.local
+    attestationLevel: platform
+  identityBindings:
+    - type: spiffe
+      provider: spire
+      issuer: https://spire.oap.local
+      jwksUri: https://spire.oap.local/.well-known/jwks.json
+      subject: spiffe://oap.local/ns/support/sa/support-ticket-agent
+      audience: oap-server
+  framework: langchain

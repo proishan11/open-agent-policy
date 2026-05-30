@@ -191,6 +191,10 @@ class OAPClient:
         *,
         resource_type: str = "",
         resource_id: str = "",
+        resource_owner: str = "",
+        resource_classification: str = "",
+        resource_environment: str = "",
+        resource_attributes: dict[str, str] | None = None,
         tool_name: str = "",
         tool_protocol: str = "",
         actor_type: str = "",
@@ -208,6 +212,10 @@ class OAPClient:
             action: Action name (e.g., "erp.invoice.read").
             resource_type: Resource type (e.g., "erp.invoice").
             resource_id: Specific resource instance.
+            resource_owner: Resource owner for policy selectors.
+            resource_classification: Resource sensitivity for policy selectors.
+            resource_environment: Resource environment for policy selectors.
+            resource_attributes: Additional resource attributes.
             tool_name: Tool being used.
             tool_protocol: Tool protocol (mcp, http, function).
             actor_type: Actor type (user, service).
@@ -238,6 +246,10 @@ class OAPClient:
             action=action,
             resource_type=resource_type,
             resource_id=resource_id,
+            resource_owner=resource_owner,
+            resource_classification=resource_classification,
+            resource_environment=resource_environment,
+            resource_attributes=resource_attributes,
             tool_name=tool_name,
             tool_protocol=tool_protocol,
             actor_type=actor_type,
@@ -283,6 +295,10 @@ class OAPClient:
         action: str,
         resource_type: str = "",
         resource_id: str = "",
+        resource_owner: str = "",
+        resource_classification: str = "",
+        resource_environment: str = "",
+        resource_attributes: dict[str, str] | None = None,
         tool_name: str = "",
         tool_protocol: str = "",
         actor_type: str = "",
@@ -304,6 +320,14 @@ class OAPClient:
             body["resource"] = {"type": resource_type}
             if resource_id:
                 body["resource"]["id"] = resource_id
+            if resource_owner:
+                body["resource"]["owner"] = resource_owner
+            if resource_classification:
+                body["resource"]["classification"] = resource_classification
+            if resource_environment:
+                body["resource"]["environment"] = resource_environment
+            if resource_attributes:
+                body["resource"]["attributes"] = resource_attributes
 
         if tool_name:
             body["tool"] = {"name": tool_name}
@@ -417,13 +441,15 @@ class OAPClient:
         self,
         agent_id: str = "",
         runtime_token: str = "",
+        workload_proof_token: str = "",
         environment: str = "",
     ) -> dict[str, Any]:
         """Create a runtime session by proving agent identity.
 
         Args:
             agent_id: Agent identifier.
-            runtime_token: OIDC/JWT token from the identity provider.
+            runtime_token: OIDC/JWT token, SPIFFE JWT-SVID, or WIMSE WIT.
+            workload_proof_token: WIMSE Workload Proof Token for WIMSE bindings.
             environment: Deployment environment name.
 
         Returns:
@@ -433,6 +459,8 @@ class OAPClient:
             "agent_id": agent_id or self.default_agent_id,
             "runtime_token": runtime_token,
         }
+        if workload_proof_token:
+            body["workload_proof_token"] = workload_proof_token
         if environment:
             body["environment"] = environment
 

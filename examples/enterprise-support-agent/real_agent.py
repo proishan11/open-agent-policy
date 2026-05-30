@@ -69,7 +69,11 @@ def make_mock_client():
         "tickets.update": {"decision": "allow_with_constraints", "constraints": {"allowed_fields": ["status", "priority", "assignee"]}},
         "tickets.escalate": {"decision": "allow"},
         "customers.read": {"decision": "allow_with_constraints", "constraints": {"readonly": True, "redact_fields": ["ssn", "credit_card", "bank_account"]}},
-        "notifications.send_email": {"decision": "allow"},
+        "notifications.send_email": {
+            "decision": "require_approval",
+            "reason": "Email notifications require support lead approval",
+            "approval": {"approvers": ["group:support-leads"], "expires_in_seconds": 1800},
+        },
         "tickets.delete": {"decision": "deny", "reason": "Support agents may not delete tickets — compliance requirement"},
     }
     client = MagicMock(spec=OAPClient)
@@ -184,7 +188,7 @@ def update_ticket(ticket_id: str, status: str = "", priority: str = "", assignee
 
 @tool
 def escalate_ticket(ticket_id: str) -> str:
-    """Escalate a ticket to the escalation team. Only allowed for P1 and P2 priority tickets."""
+    """Escalate a ticket to the escalation team. The ticket API owns priority checks."""
     decision = oap_client.authorize(agent_id=AGENT_ID, action="tickets.escalate", tool_name="escalate_ticket")
     if decision.is_denied:
         return f"❌ ACCESS DENIED: {decision.reason}"
@@ -198,12 +202,12 @@ def escalate_ticket(ticket_id: str) -> str:
 
 @tool
 def send_email(to: str, subject: str, body: str) -> str:
-    """Send an email notification. Internal emails are allowed; external emails may require approval."""
+    """Send an email notification. Current policy requires support lead approval."""
     decision = oap_client.authorize(agent_id=AGENT_ID, action="notifications.send_email", tool_name="send_email")
     if decision.is_denied:
         return f"❌ ACCESS DENIED: {decision.reason}"
     if decision.requires_approval:
-        return f"⏳ APPROVAL REQUIRED: Sending external emails needs support lead approval. Approvers: {decision.approval.get('approvers', [])}"
+        return f"⏳ APPROVAL REQUIRED: Email notifications need support lead approval. Approvers: {decision.approval.get('approvers', [])}"
 
     resp = httpx.post(f"{API_BASE}/api/notifications/email", json={
         "to": to, "subject": subject, "body": body,
@@ -230,7 +234,7 @@ SYSTEM_PROMPT = """You are a customer support agent. You help resolve support ti
 - Reading and listing tickets
 - Looking up customer information
 - Updating ticket status and priority
-- Escalating critical (P1/P2) tickets
+- Escalating critical tickets
 - Sending email notifications
 
 IMPORTANT: Your tools are policy-enforced by Open Agent Policy (OAP).

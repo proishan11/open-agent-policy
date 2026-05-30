@@ -71,6 +71,39 @@ class TestProtectDecorator:
         assert result["constraints"]["max_records"] == 10
         assert result["constraints"]["readonly"] is True
 
+    def test_allow_injects_grant_token_when_accepted(self):
+        client = make_mock_client({
+            "decision": "allow",
+            "grant": {
+                "grant_id": "grant-1",
+                "token": "jwt-token",
+                "expires_in_seconds": 300,
+            },
+        })
+
+        @protect(client, agent_id="agent://test/agent", action="test.read")
+        def read_data(item_id: str, **kwargs) -> dict:
+            return {"id": item_id, "grant_token": kwargs.get("oap_grant_token")}
+
+        result = read_data("item-1")
+        assert result["grant_token"] == "jwt-token"
+
+    def test_allow_does_not_inject_grant_token_when_not_accepted(self):
+        client = make_mock_client({
+            "decision": "allow",
+            "grant": {
+                "grant_id": "grant-1",
+                "token": "jwt-token",
+                "expires_in_seconds": 300,
+            },
+        })
+
+        @protect(client, agent_id="agent://test/agent", action="test.read")
+        def read_data(item_id: str) -> str:
+            return item_id
+
+        assert read_data("item-1") == "item-1"
+
     def test_require_approval_raises(self):
         client = make_mock_client({
             "decision": "require_approval",

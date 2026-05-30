@@ -86,6 +86,27 @@ class TestOAPToolWrapper:
         called_input = tool._call_log[0]
         assert called_input["oap_constraints"]["max_records"] == 5
 
+    def test_grant_token_injects_into_dict_input(self):
+        client = make_mock_client({
+            "decision": "allow",
+            "grant": {
+                "grant_id": "grant-1",
+                "token": "jwt-token",
+                "expires_in_seconds": 300,
+            },
+        })
+        tool = FakeTool("read_ticket")
+        wrapper = OAPToolWrapper(
+            tool=tool,
+            client=client,
+            agent_id="agent://support/assistant",
+            action="tickets.read",
+        )
+
+        wrapper.invoke({"id": "TICKET-1"})
+        called_input = tool._call_log[0]
+        assert called_input["oap_grant_token"] == "jwt-token"
+
     def test_approval_required_raises(self):
         client = make_mock_client({
             "decision": "require_approval",
@@ -153,3 +174,27 @@ class TestProtectTools:
 
         assert protected[0].action == "tickets.read"
         assert protected[1].action == "tickets.write"
+
+    def test_wrapped_tool_exports_langchain_schema(self):
+        """Wrapped tools should be usable with real LangChain tool binding."""
+        function_calling = pytest.importorskip("langchain_core.utils.function_calling")
+        tools_module = pytest.importorskip("langchain_core.tools")
+
+        @tools_module.tool
+        def read_customer(customer_id: str) -> str:
+            """Read a customer record."""
+            return customer_id
+
+        client = make_mock_client({"decision": "allow"})
+        protected = OAPToolWrapper(
+            tool=read_customer,
+            client=client,
+            agent_id="agent://test/agent",
+            action="customers.read",
+        )
+
+        schema = function_calling.convert_to_openai_tool(protected)
+
+        assert schema["type"] == "function"
+        assert schema["function"]["name"] == "read_customer"
+        assert schema["function"]["parameters"]["properties"]["customer_id"]["type"] == "string"

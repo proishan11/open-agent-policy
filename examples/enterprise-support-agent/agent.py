@@ -152,7 +152,7 @@ def run_demo_with_server():
     except PermissionDeniedError as e:
         print(f"  ❌ Denied: {e}")
 
-    # Step 5: Escalate P1 ticket (allowed for P1/P2)
+    # Step 5: Escalate P1 ticket (allowed; ticket API owns priority checks)
     step(5, "Escalate TKT-1002 (P1 — allowed)")
     try:
         result = protected_escalate_ticket("TKT-1002")
@@ -160,8 +160,8 @@ def run_demo_with_server():
     except PermissionDeniedError as e:
         print(f"  ❌ Denied: {e}")
 
-    # Step 6: Send internal email (allowed)
-    step(6, "Send email to internal recipient (allowed)")
+    # Step 6: Send email (approval required)
+    step(6, "Send email notification (approval required)")
     try:
         result = protected_send_email(
             to="oncall@company.internal",
@@ -190,8 +190,8 @@ def run_demo_with_server():
     print("  ✅ Step 2: Read ticket (allowed)")
     print("  ✅ Step 3: Read customer (SSN, CC, bank account REDACTED)")
     print("  ✅ Step 4: Updated ticket status (constrained to allowed fields)")
-    print("  ✅ Step 5: Escalated P1 ticket (allowed for P1/P2)")
-    print("  ✅ Step 6: Sent internal email (allowed)")
+    print("  ✅ Step 5: Escalated P1 ticket (allowed; API owns priority checks)")
+    print("  ⏳ Step 6: Email required approval")
     print("  🛑 Step 7: Delete blocked (explicit deny rule)")
     print()
     print("  Every decision was authorized by OAP policy.")
@@ -216,7 +216,11 @@ def run_demo_offline():
         "tickets.update": {"decision": "allow_with_constraints", "constraints": {"allowed_fields": ["status", "priority", "assignee"]}},
         "tickets.escalate": {"decision": "allow"},
         "customers.read": {"decision": "allow_with_constraints", "constraints": {"readonly": True, "redact_fields": ["ssn", "credit_card", "bank_account"]}},
-        "notifications.send_email": {"decision": "allow"},
+        "notifications.send_email": {
+            "decision": "require_approval",
+            "reason": "Email notifications require support lead approval",
+            "approval": {"approvers": ["group:support-leads"], "expires_in_seconds": 1800},
+        },
         "tickets.delete": {"decision": "deny", "reason": "Support agents may not delete tickets — compliance requirement"},
     }
 
@@ -303,9 +307,12 @@ def run_demo_offline():
     result = mock_escalate_ticket("TKT-1002")
     print(f"  ✅ Escalated: {result.get('status')}")
 
-    step(6, "Send email to internal recipient (allowed)")
-    result = mock_send_email("oncall@company.internal", "TKT-1002 escalated", "P1 ticket escalated.")
-    print(f"  ✅ Email sent: {result.get('message_id')}")
+    step(6, "Send email notification (approval required)")
+    try:
+        result = mock_send_email("oncall@company.internal", "TKT-1002 escalated", "P1 ticket escalated.")
+        print(f"  ✅ Email sent: {result.get('message_id')}")
+    except ApprovalRequiredError as e:
+        print(f"  ⏳ Approval required: {e}")
 
     step(7, "Try to delete TKT-1003 (DENIED — explicit deny rule)")
     try:
@@ -316,7 +323,8 @@ def run_demo_offline():
         print(f"     Policy enforced: support agents cannot delete tickets")
 
     banner("Demo Complete — All 7 Steps Executed")
-    print("  ✅ Steps 1-6: Allowed (with constraints where applicable)")
+    print("  ✅ Steps 1-5: Allowed (with constraints where applicable)")
+    print("  ⏳ Step 6: Approval required")
     print("  🛑 Step 7: Denied by explicit deny rule")
     print("  📋 Constraints enforced: max_records=10, field redaction, allowed_fields")
     print()

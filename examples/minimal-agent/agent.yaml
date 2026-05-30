@@ -1,0 +1,34 @@
+apiVersion: oap.dev/v1alpha1
+kind: Agent
+metadata:
+  name: customer-assistant
+  namespace: demo
+spec:
+  owner: group:demo-platform
+  description: "Minimal agent used to demonstrate OAP grants and approvals."
+  type: autonomous_agent
+  version: "0.1.0"
+  lifecycle: development
+  riskTier: medium
+  publisher: demo-platform
+  framework: custom
+  capabilities:
+    - customer.read
+    - customer.delete
+    - message.send
+  tools:
+    - name: read_customer
+      action: customer.read
+      resource:
+        type: crm.customer
+        idFrom: customer_id
+    - name: delete_customer
+      action: customer.delete
+      resource:
+        type: crm.customer
+        idFrom: customer_id
+    - name: send_message
+      action: message.send
+      resource:
+        type: slack.channel
+        idFrom: channel_id

@@ -1,0 +1,51 @@
+apiVersion: oap.dev/v1alpha1
+kind: AgentPolicy
+metadata:
+  name: customer-assistant-policy
+  namespace: demo
+spec:
+  subject:
+    agent: agent://demo/customer-assistant
+
+  rules:
+    - effect: allow
+      actions:
+        - customer.read
+      constraints:
+        maxRecords: 1
+        readonly: true
+        redact:
+          - tax_identifier
+          - bank_account
+      reason: "The demo agent may read one customer at a time with sensitive fields redacted."
+
+    - effect: allow
+      actions:
+        - message.send
+      resources:
+        types:
+          - slack.channel
+        owners:
+          - channel:internal
+      reason: "Internal notifications are allowed."
+
+    - effect: require_approval
+      actions:
+        - message.send
+      resources:
+        types:
+          - slack.channel
+        owners:
+          - channel:external
+      approval:
+        approvers:
+          - group:customer-support-leads
+        minApprovals: 1
+        expiresIn: 30m
+      reason: "External customer messages require support lead approval."
+
+    - effect: deny
+      actions:
+        - customer.delete
+        - customer.bulk_export
+      reason: "The demo agent cannot delete or bulk export customers."

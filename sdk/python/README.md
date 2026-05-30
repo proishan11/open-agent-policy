@@ -37,6 +37,9 @@ decision = client.authorize(
     action="erp.invoice.read",
     resource_type="erp.invoice",
     resource_id="INV-001",
+    resource_owner="group:finance",
+    resource_classification="confidential",
+    resource_environment="production",
 )
 
 if decision.is_allowed:
@@ -59,6 +62,13 @@ session = client.create_session(
     runtime_token=jwt,
 )
 # client now automatically uses the session token
+
+# WIMSE callers provide the WIT and matching WPT
+session = client.create_session(
+    agent_id="agent://finance/reconciler",
+    runtime_token=wit,
+    workload_proof_token=wpt,
+)
 
 # 2. Create an execution run
 run = client.create_run(
@@ -111,12 +121,14 @@ client = OAPClient(server_url="http://localhost:8080")
 @protect(client, agent_id="agent://finance/reconciler", action="erp.invoice.read")
 def read_invoice(invoice_id: str, **kwargs) -> dict:
     constraints = kwargs.get("oap_constraints", {})
+    grant_token = kwargs.get("oap_grant_token")
     max_records = constraints.get("max_records", 100)
-    # ... respect constraints ...
+    # ... call a protected resource API with X-OAP-Grant-Token ...
     return {"id": invoice_id}
 
 # Denied calls raise PermissionDeniedError
 # Constrained calls get oap_constraints injected into kwargs
+# Allowed calls with grants get oap_grant_token injected when accepted
 ```
 
 ### LangChain Integration
@@ -132,6 +144,7 @@ protected_tools = protect_tools(
     action_prefix="tickets.",
 )
 # Use protected_tools in your LangChain agent
+# Dict tool inputs receive oap_constraints and oap_grant_token when present.
 ```
 
 ### Grant Validation (resource-side)
@@ -142,7 +155,8 @@ result = client.validate_grant(grant_token=request.headers["X-OAP-Grant-Token"])
 if result.get("valid"):
     agent_id = result["agent_id"]
     action = result["action"]
-    # Serve the request knowing it's authorized
+    resource_id = result["resource_id"]
+    # Check action/resource scope before serving the request
 ```
 
 ## Data Flow
@@ -172,12 +186,30 @@ Tool invocation
 | `session_token` | Pre-existing session token | — |
 | `headers` | Additional HTTP headers | — |
 
+## Resource Metadata
+
+`authorize()` supports resource metadata used by policy selectors:
+
+```python
+decision = client.authorize(
+    action="message.send",
+    resource_type="slack.channel",
+    resource_id="slack:#external-customer-updates",
+    resource_owner="channel:external",
+    resource_classification="restricted",
+    resource_environment="production",
+    resource_attributes={"workspace": "support"},
+)
+```
+
+Use this when policies distinguish internal/external resources, owners, classifications, or deployment environments.
+
 ## Testing
 
 ```bash
 cd sdk/python
 pip install -e ".[dev]"
 pytest -v
-# 32 tests: Decision parsing, client validation, remote mode,
-#           decorators, LangChain integration
+# Covers decision parsing, client validation, grant parsing,
+# remote mode, decorators, and LangChain integration.
 ```

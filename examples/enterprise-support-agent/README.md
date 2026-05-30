@@ -6,13 +6,12 @@ A production-realistic support ticket agent demonstrating OAP's zero-trust acces
 
 | Tool | OAP Decision | Constraints |
 |---|---|---|
-| `list_tickets` | ✅ Allow | max_records: 10 |
+| `list_tickets` | ✅ Allow | decision `max_records`: 10 |
 | `read_ticket` | ✅ Allow | readonly |
 | `read_customer` | ✅ Allow | **Redact: SSN, credit card, bank account** |
-| `update_ticket` | ✅ Allow | allowed_fields: status, priority, assignee |
-| `escalate_ticket` | ✅ Allow | P1/P2 only |
-| `send_email` (internal) | ✅ Allow | — |
-| `send_email` (external) | ⏳ Require Approval | support-leads must approve |
+| `update_ticket` | ✅ Allow | decision `allowed_fields`: status, priority, assignee |
+| `escalate_ticket` | ✅ Allow | priority checks remain in the ticket API |
+| `send_email` | ⏳ Require Approval | support-leads must approve |
 | `delete_ticket` | 🛑 **Deny** | Explicit deny — compliance requirement |
 | `billing.*` | 🛑 **Deny** | No access to billing systems |
 
@@ -24,8 +23,8 @@ User → Agent (Python + @protect decorator)
          ├── tickets.read     → OAP: allow (max 10, readonly)
          ├── customers.read   → OAP: allow (redact SSN, CC, bank)
          ├── tickets.update   → OAP: allow (status, priority, assignee only)
-         ├── tickets.escalate → OAP: allow (P1/P2 conditions)
-         ├── send_email       → OAP: allow (internal) / require_approval (external)
+         ├── tickets.escalate → OAP: allow (API enforces priority checks)
+         ├── send_email       → OAP: require_approval
          └── tickets.delete   → OAP: DENY (explicit)
          │
          ├── OAP Server (evaluator + registry + audit)

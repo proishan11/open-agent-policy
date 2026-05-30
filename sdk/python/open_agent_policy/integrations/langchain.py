@@ -48,11 +48,16 @@ from open_agent_policy.errors import ApprovalRequiredError, PermissionDeniedErro
 # Conditional import — langchain-core is an optional dependency
 try:
     from langchain_core.tools import BaseTool
+    from pydantic import ConfigDict
 except ImportError:
     BaseTool = None  # type: ignore[assignment,misc]
+    ConfigDict = None  # type: ignore[assignment,misc]
 
 
-class OAPToolWrapper:
+_BaseTool = BaseTool if BaseTool is not None else object
+
+
+class OAPToolWrapper(_BaseTool):  # type: ignore[misc,valid-type]
     """Wraps a LangChain BaseTool with OAP authorization.
 
     Every invocation calls client.authorize() before running the tool.
@@ -67,6 +72,14 @@ class OAPToolWrapper:
         resource_type: Resource type for authorization.
     """
 
+    tool: Any
+    client: Any
+    agent_id: str = ""
+    action: str = ""
+    resource_type: str = ""
+    if ConfigDict is not None:
+        model_config = ConfigDict(arbitrary_types_allowed=True)
+
     def __init__(
         self,
         tool: Any,
@@ -75,14 +88,28 @@ class OAPToolWrapper:
         action: str = "",
         resource_type: str = "",
     ) -> None:
+        tool_name = getattr(tool, "name", "unknown")
+        resolved_action = action or tool_name
+
+        if BaseTool is not None:
+            super().__init__(
+                name=tool_name,
+                description=getattr(tool, "description", ""),
+                args_schema=getattr(tool, "args_schema", None),
+                tool=tool,
+                client=client,
+                agent_id=agent_id,
+                action=resolved_action,
+                resource_type=resource_type,
+            )
+            return
+
         self.tool = tool
         self.client = client
         self.agent_id = agent_id
-        self.action = action or getattr(tool, "name", "unknown")
+        self.action = resolved_action
         self.resource_type = resource_type
-
-        # Preserve tool metadata so LangChain sees this as a valid tool
-        self.name = getattr(tool, "name", "unknown")
+        self.name = tool_name
         self.description = getattr(tool, "description", "")
         self.args_schema = getattr(tool, "args_schema", None)
 
@@ -101,6 +128,17 @@ class OAPToolWrapper:
             PermissionDeniedError: If the action is denied.
             ApprovalRequiredError: If approval is needed.
         """
+        if BaseTool is not None:
+            return super().invoke(input, config=config, **kwargs)
+        return self._authorize_and_invoke(input, config=config, **kwargs)
+
+    def _run(self, *args: Any, **kwargs: Any) -> Any:
+        """LangChain BaseTool execution hook."""
+        tool_input = kwargs if kwargs else (args[0] if args else {})
+        return self._authorize_and_invoke(tool_input)
+
+    def _authorize_and_invoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any:
+        """Authorize an input and invoke the wrapped tool."""
         # Extract resource_id from input if possible
         resource_id = ""
         if isinstance(input, dict):
@@ -130,14 +168,28 @@ class OAPToolWrapper:
                 approvers=decision.approval.get("approvers", []),
             )
 
-        # Inject constraints into tool input if present
-        if decision.constraints and isinstance(input, dict):
-            input["oap_constraints"] = decision.constraints
+        tool_input = dict(input) if isinstance(input, dict) else input
 
-        return self.tool.invoke(input, config=config, **kwargs)
+        # Inject enforcement metadata into dict inputs so tools can call
+        # resource APIs with the scoped grant and honor constraints.
+        if isinstance(tool_input, dict):
+            if decision.constraints:
+                tool_input["oap_constraints"] = decision.constraints
+            if decision.grant:
+                tool_input["oap_grant_token"] = decision.grant.token
+                tool_input["oap_grant"] = decision.grant
+
+        if hasattr(self.tool, "invoke"):
+            return self.tool.invoke(tool_input, config=config, **kwargs)
+        if isinstance(tool_input, dict):
+            return self.tool(**tool_input)
+        return self.tool(tool_input)
+
 
     def run(self, input: Any, **kwargs: Any) -> Any:
         """Convenience method matching BaseTool.run()."""
+        if BaseTool is not None:
+            return BaseTool.run(self, input, **kwargs)
         return self.invoke(input, **kwargs)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
