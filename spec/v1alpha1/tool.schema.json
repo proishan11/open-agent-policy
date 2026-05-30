@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oap.dev/spec/v1alpha1/tool.schema.json",
+  "title": "OAP Tool",
+  "description": "A tool registered with OAP. Tools are the interface through which agents perform actions on resources.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "oap.dev/v1alpha1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "Tool"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "namespace"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "namespace": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["name", "action"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Tool name as seen by the agent. Example: erp.get_invoice"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what the tool does."
+        },
+        "action": {
+          "type": "string",
+          "description": "OAP action this tool maps to. Example: erp.invoice.read"
+        },
+        "protocol": {
+          "type": "string",
+          "enum": ["mcp", "http", "function", "shell", "sdk"],
+          "description": "Protocol used to invoke the tool."
+        },
+        "server": {
+          "type": "string",
+          "description": "Server URI for remote tools."
+        },
+        "risk": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"],
+          "description": "Risk level of the tool."
+        },
+        "resource": {
+          "type": "object",
+          "description": "Resource mapping for this tool.",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Resource type this tool operates on."
+            },
+            "idFrom": {
+              "type": "string",
+              "description": "Expression to extract resource ID from tool arguments."
+            }
+          }
+        },
+        "inputSchema": {
+          "type": "object",
+          "description": "JSON Schema describing the tool's input parameters.",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

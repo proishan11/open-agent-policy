@@ -1,0 +1,10 @@
+title = "OAP Gitleaks Config"
+
+[allowlist]
+  description = "Allowlist for OAP"
+  paths = [
+    '''(^|/)vendor/''',
+    '''(^|/)\.git/''',
+    '''\.schema\.json$''',
+  ]
+  regexTarget = "match"

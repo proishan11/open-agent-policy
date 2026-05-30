@@ -1,0 +1,38 @@
+# Conformance Test 01: Deny Unregistered Agent
+# Validates: Principle 3.1 — Agents must be registered
+# Expected: An agent not in the registry is always denied.
+
+name: deny-unregistered-agent
+description: An unregistered agent must be denied regardless of policies.
+
+agents: []
+
+policies:
+  - apiVersion: oap.dev/v1alpha1
+    kind: AgentPolicy
+    metadata:
+      name: allow-all-reads
+      namespace: finance
+    spec:
+      subject:
+        allAgents: true
+      rules:
+        - effect: allow
+          actions:
+            - erp.invoice.read
+
+request:
+  request_id: req_test01
+  timestamp: "2026-05-25T08:00:00Z"
+  subject:
+    type: agent
+    agent_id: agent://finance/unknown-agent
+  action:
+    name: erp.invoice.read
+  resource:
+    type: erp.invoice
+    id: INV-001
+
+expected:
+  decision: deny
+  reason_contains: unregistered

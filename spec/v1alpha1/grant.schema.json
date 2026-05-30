@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oap.dev/spec/v1alpha1/grant.schema.json",
+  "title": "OAP Grant",
+  "description": "A short-lived, scoped permission grant issued by OAP when an authorization request is allowed.",
+  "type": "object",
+  "required": ["grant_id", "agent_id", "scope", "expires_at", "issued_at"],
+  "additionalProperties": false,
+  "properties": {
+    "grant_id": {
+      "type": "string",
+      "description": "Unique grant identifier.",
+      "pattern": "^grant_[a-zA-Z0-9]+$"
+    },
+    "decision_id": {
+      "type": "string",
+      "description": "The decision that produced this grant."
+    },
+    "agent_id": {
+      "type": "string",
+      "description": "The agent this grant is issued to."
+    },
+    "actor_id": {
+      "type": "string",
+      "description": "The actor on whose behalf the agent is acting."
+    },
+    "scope": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Actions permitted by this grant."
+    },
+    "resource": {
+      "type": "object",
+      "description": "Resource this grant is scoped to.",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "id": { "type": "string" }
+      }
+    },
+    "audience": {
+      "type": "string",
+      "description": "Intended audience (target service) for this grant."
+    },
+    "constraints": {
+      "type": "object",
+      "description": "Constraints attached to this grant.",
+      "additionalProperties": false,
+      "properties": {
+        "max_records": { "type": "integer", "minimum": 1 },
+        "redact_fields": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "allowed_fields": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "readonly": { "type": "boolean" },
+        "time_window_seconds": { "type": "integer", "minimum": 1 },
+        "expires_in_seconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the grant was issued."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the grant expires."
+    },
+    "token": {
+      "type": "string",
+      "description": "Signed JWT representation of the grant."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "expired", "revoked"],
+      "description": "Current grant status."
+    }
+  }
+}

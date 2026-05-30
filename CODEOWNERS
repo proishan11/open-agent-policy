@@ -1,0 +1,32 @@
+# OAP Code Owners
+# These owners will be automatically requested for review on PRs.
+
+# Default owner for everything
+* @proishan
+
+# Spec and schemas
+/spec/ @proishan
+/conformance/ @proishan
+
+# Core engine
+/engine/ @proishan
+
+# Server
+/server/ @proishan
+
+# CLI
+/cli/ @proishan
+
+# Python SDK
+/sdk/python/ @proishan
+
+# Gateway and proxy
+/gateway/ @proishan
+/proxy/ @proishan
+
+# CI/CD
+/.github/ @proishan
+
+# Security-sensitive files
+/SECURITY.md @proishan
+/.gitleaks.toml @proishan

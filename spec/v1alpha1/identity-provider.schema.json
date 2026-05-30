@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oap.dev/spec/v1alpha1/identity-provider.schema.json",
+  "title": "OAP Identity Provider",
+  "description": "Configuration for an external identity provider used to verify actor (user/service) identity.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "oap.dev/v1alpha1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "IdentityProvider"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["type", "issuer"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["oidc"],
+          "description": "Identity provider type."
+        },
+        "issuer": {
+          "type": "string",
+          "format": "uri",
+          "description": "OIDC issuer URL."
+        },
+        "jwksUri": {
+          "type": "string",
+          "format": "uri",
+          "description": "JWKS endpoint for token signature verification."
+        },
+        "audience": {
+          "type": "string",
+          "description": "Expected audience claim in tokens."
+        },
+        "claimsMapping": {
+          "type": "object",
+          "description": "Mapping from IdP token claims to OAP actor fields.",
+          "additionalProperties": false,
+          "properties": {
+            "userId": {
+              "type": "string",
+              "description": "Claim for user ID (e.g., 'sub')."
+            },
+            "email": {
+              "type": "string",
+              "description": "Claim for email."
+            },
+            "groups": {
+              "type": "string",
+              "description": "Claim for group membership."
+            },
+            "roles": {
+              "type": "string",
+              "description": "Claim for roles."
+            }
+          }
+        }
+      }
+    }
+  }
+}

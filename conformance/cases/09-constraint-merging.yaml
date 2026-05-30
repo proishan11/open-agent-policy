@@ -1,0 +1,82 @@
+# Conformance Test 09: Constraint Merging (Strictest Wins)
+# Validates: When multiple policies match, the strictest constraint prevails.
+
+name: constraint-merging
+description: When two policies both allow with different constraints, the strictest constraint wins.
+
+agents:
+  - apiVersion: oap.dev/v1alpha1
+    kind: Agent
+    metadata:
+      name: invoice-reconciler
+      namespace: finance
+    spec:
+      owner: group:finance-platform
+      type: workflow_agent
+      riskTier: medium
+      capabilities:
+        - erp.invoice.read
+    status:
+      state: active
+
+policies:
+  # Policy 1: allows with maxRecords: 50
+  - apiVersion: oap.dev/v1alpha1
+    kind: AgentPolicy
+    metadata:
+      name: finance-invoice-read-broad
+      namespace: finance
+    spec:
+      subject:
+        agent: agent://finance/invoice-reconciler
+      rules:
+        - effect: allow
+          actions:
+            - erp.invoice.read
+          resources:
+            types:
+              - erp.invoice
+          constraints:
+            maxRecords: 50
+            readonly: true
+
+  # Policy 2: allows with maxRecords: 10, plus redaction
+  - apiVersion: oap.dev/v1alpha1
+    kind: AgentPolicy
+    metadata:
+      name: finance-invoice-read-strict
+      namespace: finance
+    spec:
+      subject:
+        agentNamespace: finance
+      rules:
+        - effect: allow
+          actions:
+            - erp.invoice.read
+          resources:
+            types:
+              - erp.invoice
+          constraints:
+            maxRecords: 10
+            redact:
+              - bank_account_number
+
+request:
+  request_id: req_test09
+  timestamp: "2026-05-25T08:00:00Z"
+  subject:
+    type: agent
+    agent_id: agent://finance/invoice-reconciler
+  action:
+    name: erp.invoice.read
+  resource:
+    type: erp.invoice
+    id: INV-001
+
+expected:
+  decision: allow_with_constraints
+  constraints:
+    maxRecords: 10
+    readonly: true
+    redact:
+      - bank_account_number

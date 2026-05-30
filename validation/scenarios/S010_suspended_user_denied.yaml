@@ -1,0 +1,23 @@
+id: S010
+name: suspended-user-denied
+description: >
+  Eve is disabled in Keycloak. She should not be able to authenticate
+  and any token-based request should be denied.
+idpProviders:
+  - keycloak
+actor:
+  user: eve@company.test
+  password: eve123
+agent:
+  id: agent://support/ticket-assistant
+task:
+  type: deterministic
+  action: ticket.read
+  resource:
+    type: support.ticket
+    id: "T-100"
+expected:
+  authentication_fails: true
+  decision: deny
+  audit:
+    required: false

@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ticket-assistant
+  namespace: support
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ticket-assistant
+  template:
+    metadata:
+      labels:
+        app: ticket-assistant
+    spec:
+      serviceAccountName: ticket-assistant
+      containers:
+        - name: agent
+          image: registry.example.com/ticket-assistant:latest
+          env:
+            - name: OAP_SERVER_URL
+              value: "https://oap.company.com"
+            - name: OAP_TOKEN_FILE
+              value: "/var/run/secrets/oap/token"
+          volumeMounts:
+            - name: oap-token
+              mountPath: /var/run/secrets/oap
+              readOnly: true
+      volumes:
+        - name: oap-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: "oap-server"
+                  expirationSeconds: 3600
+                  path: token
+

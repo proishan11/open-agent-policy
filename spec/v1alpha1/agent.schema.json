@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oap.dev/spec/v1alpha1/agent.schema.json",
+  "title": "OAP Agent",
+  "description": "A registered autonomous or semi-autonomous software actor. Agents must be registered with OAP before they can access protected resources.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "oap.dev/v1alpha1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "Agent"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "namespace"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Agent name. Unique within namespace.",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Namespace the agent belongs to.",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "labels": {
+          "type": "object",
+          "description": "Key-value labels for filtering.",
+          "additionalProperties": { "type": "string" }
+        },
+        "annotations": {
+          "type": "object",
+          "description": "Key-value annotations for metadata.",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["owner", "type", "riskTier", "capabilities"],
+      "additionalProperties": false,
+      "properties": {
+        "owner": {
+          "type": "string",
+          "description": "Accountable owner. Format: user:<id> or group:<name>",
+          "pattern": "^(user|group):.+$"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this agent does."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["workflow_agent", "chat_agent", "autonomous_agent", "pipeline_agent", "tool_agent"],
+          "description": "Agent classification."
+        },
+        "version": {
+          "type": "string",
+          "description": "Semantic version of the agent."
+        },
+        "lifecycle": {
+          "type": "string",
+          "enum": ["development", "staging", "production", "deprecated"],
+          "description": "Lifecycle stage."
+        },
+        "riskTier": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"],
+          "description": "Risk classification."
+        },
+        "publisher": {
+          "type": "string",
+          "description": "Organization or team that published the agent."
+        },
+        "framework": {
+          "type": "string",
+          "description": "Agent framework used (langchain, crewai, openai-agents, custom, etc.)."
+        },
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Actions the agent declares it needs. Format: tool:<action> or action:<name>"
+        },
+        "workloadIdentity": {
+          "type": "object",
+          "description": "Standards-compatible workload identity profile for this logical agent.",
+          "required": ["id"],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^(spiffe://|wimse://|https://|urn:|agent://).+$",
+              "description": "Stable workload identifier URI. Prefer spiffe:// when available."
+            },
+            "type": {
+              "type": "string",
+              "enum": ["spiffe", "wimse", "custom_uri"],
+              "description": "Workload identity profile."
+            },
+            "trustDomain": {
+              "type": "string",
+              "description": "Trust domain that issued or governs the workload identity."
+            },
+            "attestationLevel": {
+              "type": "string",
+              "enum": ["none", "platform", "hardware", "supply_chain"],
+              "description": "Assurance level behind this workload identity."
+            }
+          }
+        },
+        "identityBindings": {
+          "type": "array",
+          "description": "Verifiable runtime credentials allowed to prove this agent identity.",
+          "items": {
+            "type": "object",
+            "required": ["type", "issuer", "subject"],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["oidc_client", "kubernetes_service_account", "spiffe", "wimse"],
+                "description": "Runtime credential mechanism."
+              },
+              "provider": {
+                "type": "string",
+                "description": "Human-readable provider name."
+              },
+              "issuer": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Expected JWT issuer."
+              },
+              "jwksUri": {
+                "type": "string",
+                "format": "uri",
+                "description": "Explicit JWKS or SPIFFE bundle endpoint when OIDC discovery is not available."
+              },
+              "subject": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Expected subject, client ID, ServiceAccount subject, SPIFFE ID, or WIMSE workload ID."
+              },
+              "audience": {
+                "type": "string",
+                "description": "Expected JWT audience. For WIMSE, an accepted WPT audience or deployment alias."
+              }
+            }
+          }
+        },
+        "runtime": {
+          "type": "object",
+          "description": "Runtime environment details.",
+          "additionalProperties": false,
+          "properties": {
+            "platform": {
+              "type": "string",
+              "enum": ["kubernetes", "docker", "cloud_function", "vm", "local"],
+              "description": "Runtime platform."
+            },
+            "namespace": {
+              "type": "string",
+              "description": "Kubernetes namespace (if applicable)."
+            },
+            "serviceAccount": {
+              "type": "string",
+              "description": "Kubernetes service account (if applicable)."
+            },
+            "workloadIdentity": {
+              "type": "string",
+              "description": "SPIFFE ID or cloud workload identity URI."
+            },
+            "imageDigest": {
+              "type": "string",
+              "description": "Container image digest (sha256:...)."
+            }
+          }
+        },
+        "tools": {
+          "type": "array",
+          "description": "Tools the agent uses, with action and resource mappings.",
+          "items": {
+            "type": "object",
+            "required": ["name", "action"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Tool name."
+              },
+              "action": {
+                "type": "string",
+                "description": "OAP action this tool maps to."
+              },
+              "resource": {
+                "type": "object",
+                "description": "Resource mapping.",
+                "additionalProperties": false,
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "description": "Resource type."
+                  },
+                  "idFrom": {
+                    "type": "string",
+                    "description": "JSONPath-like expression to extract resource ID from tool arguments."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "status": {
+      "type": "object",
+      "description": "Runtime status (set by OAP, not by the user).",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["active", "suspended", "revoked", "pending_review"],
+          "description": "Current agent state."
+        },
+        "registeredAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the agent was registered."
+        },
+        "lastSeenAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the agent last authenticated."
+        },
+        "credentials": {
+          "type": "object",
+          "description": "Issued credentials (returned on registration, not stored in manifest).",
+          "additionalProperties": false,
+          "properties": {
+            "clientId": {
+              "type": "string"
+            },
+            "tokenEndpoint": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        }
+      }
+    }
+  }
+}

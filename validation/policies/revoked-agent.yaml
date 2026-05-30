@@ -1,0 +1,15 @@
+apiVersion: oap.dev/v1alpha1
+kind: Agent
+metadata:
+  name: revoked-agent
+  namespace: support
+status:
+  state: revoked
+spec:
+  owner: "group:support_platform"
+  type: chat_agent
+  riskTier: medium
+  description: "Previously active support agent — now revoked."
+  capabilities:
+    - ticket.read
+    - customer.read

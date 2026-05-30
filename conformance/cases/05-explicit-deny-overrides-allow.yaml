@@ -1,0 +1,69 @@
+# Conformance Test 05: Explicit Deny Overrides Allow
+# Validates: Principle 3.3 — A deny rule always wins over an allow rule.
+
+name: explicit-deny-overrides-allow
+description: When both an allow and deny policy match, deny wins.
+
+agents:
+  - apiVersion: oap.dev/v1alpha1
+    kind: Agent
+    metadata:
+      name: invoice-reconciler
+      namespace: finance
+    spec:
+      owner: group:finance-platform
+      type: workflow_agent
+      riskTier: medium
+      capabilities:
+        - erp.invoice.delete
+    status:
+      state: active
+
+policies:
+  # This policy allows the action
+  - apiVersion: oap.dev/v1alpha1
+    kind: AgentPolicy
+    metadata:
+      name: finance-invoice-all
+      namespace: finance
+    spec:
+      subject:
+        agent: agent://finance/invoice-reconciler
+      rules:
+        - effect: allow
+          actions:
+            - erp.invoice.delete
+          resources:
+            types:
+              - erp.invoice
+
+  # This global policy denies the action
+  - apiVersion: oap.dev/v1alpha1
+    kind: AgentPolicy
+    metadata:
+      name: global-no-delete
+      namespace: finance
+    spec:
+      subject:
+        allAgents: true
+      rules:
+        - effect: deny
+          actions:
+            - erp.invoice.delete
+          reason: "No agent may delete invoices."
+
+request:
+  request_id: req_test05
+  timestamp: "2026-05-25T08:00:00Z"
+  subject:
+    type: agent
+    agent_id: agent://finance/invoice-reconciler
+  action:
+    name: erp.invoice.delete
+  resource:
+    type: erp.invoice
+    id: INV-001
+
+expected:
+  decision: deny
+  reason_contains: "No agent may delete invoices"

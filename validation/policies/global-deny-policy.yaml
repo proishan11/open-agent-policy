@@ -1,0 +1,19 @@
+apiVersion: oap.dev/v1alpha1
+kind: AgentPolicy
+metadata:
+  name: bulk-export-agent-lockdown
+  namespace: support
+spec:
+  subject:
+    agent: "agent://support/bulk-export-agent"
+
+  rules:
+    # Deny all actions for the bulk-export-agent
+    # (registered but fully locked down)
+    - effect: deny
+      actions:
+        - ticket.bulk_export
+        - customer.bulk_export
+        - ticket.read
+        - customer.read
+      reason: "Bulk export agent is locked down pending security review"

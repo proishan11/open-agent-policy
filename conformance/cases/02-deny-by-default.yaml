@@ -1,0 +1,39 @@
+# Conformance Test 02: Deny By Default
+# Validates: Principle 3.2 — If no policy explicitly allows the action, access is denied.
+# Expected: A registered agent with no matching allow policy is denied.
+
+name: deny-by-default
+description: A registered agent with no matching policy must be denied.
+
+agents:
+  - apiVersion: oap.dev/v1alpha1
+    kind: Agent
+    metadata:
+      name: invoice-reconciler
+      namespace: finance
+    spec:
+      owner: group:finance-platform
+      type: workflow_agent
+      riskTier: medium
+      capabilities:
+        - erp.invoice.read
+    status:
+      state: active
+
+policies: []
+
+request:
+  request_id: req_test02
+  timestamp: "2026-05-25T08:00:00Z"
+  subject:
+    type: agent
+    agent_id: agent://finance/invoice-reconciler
+  action:
+    name: erp.invoice.read
+  resource:
+    type: erp.invoice
+    id: INV-001
+
+expected:
+  decision: deny
+  reason_contains: no matching policy

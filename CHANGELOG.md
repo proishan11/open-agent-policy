@@ -1,0 +1,61 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+
+- Project architecture document (`architecture.md`)
+- Development plan with spec-driven approach (`DEVELOPMENT_PLAN.md`)
+- JSON Schemas for all core types (v1alpha1):
+  - authorization-request, authorization-decision
+  - agent, resource, tool
+  - policy, audit-event, grant, identity-provider
+- OpenAPI spec for oap-server HTTP API (14 paths, 19 schemas, 22 operations)
+- 10 conformance test cases covering all core principles
+- Demo validation script (33/33 passing)
+- Go policy evaluation engine (`engine/evaluator`) — deny-overrides-allow, condition
+  checking, constraint merging (strictest wins), delegation scope verification
+- In-memory registry store (`engine/registry`) — file-backed, recursive YAML/JSON loading
+- Audit sinks (`engine/audit`) — JSONL, stdout, in-memory (for testing)
+- HTTP server (`server/api`) — authorize, simulate, agent/policy CRUD, health
+- CLI tool (`cli/cmd/oapctl`):
+  - `oapctl dev` — start local dev server with data from files
+  - `oapctl simulate` / `oapctl explain` — local policy evaluation and tracing
+  - `oapctl test --conformance` — run conformance suite (10/10 passing)
+  - `oapctl agent register/list` / `oapctl policy apply/list` — remote management
+- Finance invoice agent example (agent manifest, policy, request samples)
+- Component READMEs for engine, server, cli (per §8 documentation standards)
+- doc.go for every Go package
+- Python SDK (`sdk/python/open_agent_policy`):
+  - `OAPClient` with remote (HTTP) and embedded (oapctl subprocess) modes
+  - `@protect` decorator for automatic tool authorization
+  - `OAPToolWrapper` and `protect_tools()` for LangChain integration
+  - Error hierarchy (`PermissionDeniedError`, `ApprovalRequiredError`, `ServerError`)
+  - 32 pytest tests passing
+- Go test coverage for all engine packages (model, registry, audit)
+- MCP proxy (`proxy/`) — intercepts tools/list and tools/call with OAP authorization
+- HTTP gateway (`gateway/`) — reverse proxy with route-to-action mapping and policy enforcement
+- Observe mode for proxy and gateway (log-only, no blocking)
+- JWT grant issuance (`engine/grant/`) — HMAC-SHA256 signed grants with OAP claims
+- `make venv` for Python virtual environment setup
+- Identity verification (`engine/identity/`):
+  - DevVerifier, OIDCVerifier, KubernetesVerifier, CompositeVerifier
+- Policy bundle sync (`engine/bundle/`):
+  - Bundle server with ETag caching, polling client
+- Security abuse tests — prompt injection, confused deputy, escalation, revocation
+- Fail-closed behavior tests — empty store, no policies, empty fields
+- Dockerfile (multi-stage Go build → Alpine runtime)
+- docker-compose.yml reference environment
+- Helm chart (deploy/helm/oap/) for Kubernetes deployment
+- Project infrastructure:
+  - Pre-commit hooks (conventional commits, gofmt, ruff, gitleaks)
+  - GitHub Actions CI (lint, test, security scans)
+  - Makefile for common tasks
+  - ADR template and initial architecture decisions
+  - Open source hygiene (CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CODEOWNERS)
+  - Dev container configuration

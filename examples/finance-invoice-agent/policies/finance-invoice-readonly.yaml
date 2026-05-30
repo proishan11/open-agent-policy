@@ -1,0 +1,38 @@
+apiVersion: oap.dev/v1alpha1
+kind: AgentPolicy
+metadata:
+  name: finance-invoice-readonly
+  namespace: finance
+spec:
+  subject:
+    agent: agent://finance/invoice-reconciler
+  rules:
+    - effect: allow
+      actions:
+        - erp.invoice.read
+        - erp.invoice.list
+      constraints:
+        readonly: true
+        maxRecords: 25
+        redact:
+          - bank_account
+          - routing_number
+      obligations:
+        audit: true
+      reason: "Allow invoice reads with PII redaction and record limits."
+
+    - effect: deny
+      actions:
+        - erp.invoice.delete
+        - erp.invoice.update_payment
+      reason: "Agents may not delete invoices or modify payment details."
+
+    - effect: require_approval
+      actions:
+        - erp.invoice.update_status
+      approval:
+        approvers:
+          - group:finance-leads
+        minApprovals: 1
+        expiresIn: 30m
+      reason: "Status changes require approval from a finance lead."

@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-oap-server
+  labels:
+    app: oap-server
+    app.kubernetes.io/name: oap
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: oap-server
+  template:
+    metadata:
+      labels:
+        app: oap-server
+        app.kubernetes.io/name: oap
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+        - name: oap-server
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--addr={{ .Values.server.addr }}"
+            - "--data={{ .Values.server.dataDir }}"
+            - "--audit-file={{ .Values.server.auditFile }}"
+            {{- if .Values.server.devMode }}
+            - "--dev"
+            {{- end }}
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.audit.enabled }}
+            - name: audit
+              mountPath: /audit
+            {{- end }}
+      volumes:
+        {{- if .Values.audit.enabled }}
+        - name: audit
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-audit
+        {{- end }}

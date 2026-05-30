@@ -1,0 +1,7 @@
+{
+  "decision": "Deny",
+  "diagnostics": {
+    "reason": ["bulk export is prohibited"]
+  }
+}
+

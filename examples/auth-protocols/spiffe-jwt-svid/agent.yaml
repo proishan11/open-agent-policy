@@ -1,0 +1,24 @@
+apiVersion: oap.dev/v1alpha1
+kind: Agent
+metadata:
+  name: ticket-assistant
+  namespace: support
+spec:
+  owner: group:support-platform
+  type: chat_agent
+  riskTier: medium
+  capabilities:
+    - ticket.read
+  workloadIdentity:
+    id: "spiffe://oap.local/ns/support/sa/ticket-assistant"
+    type: spiffe
+    trustDomain: oap.local
+    attestationLevel: platform
+  identityBindings:
+    - type: spiffe
+      provider: spire
+      issuer: "https://spire.oap.local"
+      jwksUri: "https://spire.oap.local/.well-known/jwks.json"
+      subject: "spiffe://oap.local/ns/support/sa/ticket-assistant"
+      audience: "oap-server"
+

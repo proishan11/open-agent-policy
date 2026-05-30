@@ -1,0 +1,25 @@
+id: S014
+name: direct-api-bypass-denied
+description: >
+  Agent calls the ticket API directly without going through OAP.
+  The resource API should reject the request.
+idpProviders:
+  - keycloak
+actor:
+  user: alice@company.test
+  password: alice123
+agent:
+  id: agent://support/ticket-assistant
+task:
+  type: deterministic
+  bypass: true
+  action: ticket.read
+  resource:
+    type: support.ticket
+    id: "T-100"
+  note: >
+    This test calls the ticket API directly without OAP authorization.
+    Validates that resource APIs are not freely accessible without OAP grants.
+expected:
+  resource_api_rejects: true
+  noResourceDataReturned: true

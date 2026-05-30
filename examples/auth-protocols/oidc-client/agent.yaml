@@ -1,0 +1,18 @@
+apiVersion: oap.dev/v1alpha1
+kind: Agent
+metadata:
+  name: ticket-assistant
+  namespace: support
+spec:
+  owner: group:support-platform
+  type: chat_agent
+  riskTier: medium
+  capabilities:
+    - ticket.read
+  identityBindings:
+    - type: oidc_client
+      provider: keycloak
+      issuer: "https://keycloak.company.com/realms/agents"
+      subject: "support-agent"
+      audience: "oap-server"
+

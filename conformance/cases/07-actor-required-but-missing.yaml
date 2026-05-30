@@ -1,0 +1,56 @@
+# Conformance Test 07: Actor Required But Missing
+# Validates: Condition evaluation — if actorRequired is true and no actor is present, rule does not match.
+
+name: actor-required-but-missing
+description: A policy with actorRequired condition must deny when no actor is present.
+
+agents:
+  - apiVersion: oap.dev/v1alpha1
+    kind: Agent
+    metadata:
+      name: invoice-reconciler
+      namespace: finance
+    spec:
+      owner: group:finance-platform
+      type: workflow_agent
+      riskTier: medium
+      capabilities:
+        - erp.invoice.read
+    status:
+      state: active
+
+policies:
+  - apiVersion: oap.dev/v1alpha1
+    kind: AgentPolicy
+    metadata:
+      name: finance-invoice-read
+      namespace: finance
+    spec:
+      subject:
+        agent: agent://finance/invoice-reconciler
+      rules:
+        - effect: allow
+          actions:
+            - erp.invoice.read
+          resources:
+            types:
+              - erp.invoice
+          conditions:
+            actorRequired: true
+
+# Request has no actor field
+request:
+  request_id: req_test07
+  timestamp: "2026-05-25T08:00:00Z"
+  subject:
+    type: agent
+    agent_id: agent://finance/invoice-reconciler
+  action:
+    name: erp.invoice.read
+  resource:
+    type: erp.invoice
+    id: INV-001
+
+expected:
+  decision: deny
+  reason_contains: actor required

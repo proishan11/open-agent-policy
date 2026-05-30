@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oap.dev/spec/v1alpha1/audit-event.schema.json",
+  "title": "OAP Audit Event",
+  "description": "Structured audit event emitted for every authorization decision.",
+  "type": "object",
+  "required": ["event_id", "event_type", "timestamp", "decision", "subject", "action", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "Unique event identifier.",
+      "pattern": "^evt_[a-zA-Z0-9]+$"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "authorization.decision",
+        "agent.registered",
+        "agent.revoked",
+        "agent.suspended",
+        "policy.applied",
+        "policy.removed",
+        "delegation.created",
+        "delegation.revoked",
+        "approval.requested",
+        "approval.granted",
+        "approval.denied",
+        "grant.issued",
+        "grant.expired",
+        "grant.revoked"
+      ],
+      "description": "Type of audit event."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event occurred."
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["allow", "allow_with_constraints", "deny", "require_approval", "require_delegation", "require_step_up_auth", "n/a"],
+      "description": "Authorization decision (n/a for non-decision events)."
+    },
+    "subject": {
+      "type": "object",
+      "description": "The agent involved.",
+      "required": ["agent_id"],
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "instance_id": {
+          "type": "string"
+        }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "description": "The actor involved (if any).",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["user", "service", "agent"]
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    },
+    "action": {
+      "type": "string",
+      "description": "The action that was requested."
+    },
+    "resource": {
+      "type": "object",
+      "description": "The resource involved.",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "id": { "type": "string" },
+        "classification": { "type": "string" }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "description": "The tool involved (if any).",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "protocol": { "type": "string" }
+      }
+    },
+    "policy_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Policies that contributed to this decision."
+    },
+    "constraints": {
+      "type": "object",
+      "description": "Constraints applied.",
+      "additionalProperties": false,
+      "properties": {
+        "max_records": { "type": "integer", "minimum": 1 },
+        "redact_fields": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "allowed_fields": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "readonly": { "type": "boolean" },
+        "time_window_seconds": { "type": "integer", "minimum": 1 },
+        "expires_in_seconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "grant_id": {
+      "type": "string",
+      "description": "Grant issued (if any)."
+    },
+    "request_id": {
+      "type": "string",
+      "description": "The authorization request ID."
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Agent run/session ID."
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "Distributed trace ID (for OpenTelemetry integration)."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Human-readable explanation."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional event-specific metadata.",
+      "additionalProperties": true
+    }
+  }
+}

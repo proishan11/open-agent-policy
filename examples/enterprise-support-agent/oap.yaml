@@ -1,0 +1,33 @@
+apiVersion: oap.dev/v1alpha1
+kind: Agent
+metadata:
+  name: support-ticket-agent
+  namespace: support
+spec:
+  owner: group:support-engineering
+  type: chat_agent
+  riskTier: medium
+  description: >
+    Customer support agent that reads tickets, looks up customer data,
+    sends notifications, and escalates critical issues. Operates under
+    OAP policy with field-level redaction and approval workflows.
+  capabilities:
+    - tickets.read
+    - tickets.list
+    - tickets.update
+    - tickets.escalate
+    - customers.read
+    - notifications.send_email
+  workloadIdentity:
+    id: spiffe://oap.local/ns/support/sa/support-ticket-agent
+    type: spiffe
+    trustDomain: oap.local
+    attestationLevel: platform
+  identityBindings:
+    - type: spiffe
+      provider: spire
+      issuer: https://spire.oap.local
+      jwksUri: https://spire.oap.local/.well-known/jwks.json
+      subject: spiffe://oap.local/ns/support/sa/support-ticket-agent
+      audience: oap-server
+  framework: langchain
