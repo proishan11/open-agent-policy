@@ -89,6 +89,73 @@
           "minItems": 1,
           "description": "Actions the agent declares it needs. Format: tool:<action> or action:<name>"
         },
+        "workloadIdentity": {
+          "type": "object",
+          "description": "Standards-compatible workload identity profile for this logical agent.",
+          "required": ["id"],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^(spiffe://|wimse://|https://|urn:|agent://).+$",
+              "description": "Stable workload identifier URI. Prefer spiffe:// when available."
+            },
+            "type": {
+              "type": "string",
+              "enum": ["spiffe", "wimse", "custom_uri"],
+              "description": "Workload identity profile."
+            },
+            "trustDomain": {
+              "type": "string",
+              "description": "Trust domain that issued or governs the workload identity."
+            },
+            "attestationLevel": {
+              "type": "string",
+              "enum": ["none", "platform", "hardware", "supply_chain"],
+              "description": "Assurance level behind this workload identity."
+            }
+          }
+        },
+        "identityBindings": {
+          "type": "array",
+          "description": "Verifiable runtime credentials allowed to prove this agent identity.",
+          "items": {
+            "type": "object",
+            "required": ["type", "issuer", "subject"],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["oidc_client", "kubernetes_service_account", "spiffe", "wimse"],
+                "description": "Runtime credential mechanism."
+              },
+              "provider": {
+                "type": "string",
+                "description": "Human-readable provider name."
+              },
+              "issuer": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Expected JWT issuer."
+              },
+              "jwksUri": {
+                "type": "string",
+                "format": "uri",
+                "description": "Explicit JWKS or SPIFFE bundle endpoint when OIDC discovery is not available."
+              },
+              "subject": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Expected subject, client ID, ServiceAccount subject, SPIFFE ID, or WIMSE workload ID."
+              },
+              "audience": {
+                "type": "string",
+                "description": "Expected JWT audience. For WIMSE, an accepted WPT audience or deployment alias."
+              }
+            }
+          }
+        },
         "runtime": {
           "type": "object",
           "description": "Runtime environment details.",

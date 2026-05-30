@@ -68,7 +68,7 @@
     "constraints": {
       "type": "object",
       "description": "Constraints applied to the allowed action.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "max_records": {
           "type": "integer",
@@ -80,6 +80,11 @@
           "items": { "type": "string" },
           "description": "Fields that must be redacted from responses."
         },
+        "allowed_fields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fields the agent may modify or return."
+        },
         "readonly": {
           "type": "boolean",
           "description": "If true, only read operations are permitted."
@@ -88,13 +93,18 @@
           "type": "integer",
           "minimum": 1,
           "description": "Time window within which the action must complete."
+        },
+        "expires_in_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Grant lifetime selected from the strictest matching policy."
         }
       }
     },
     "obligations": {
       "type": "object",
       "description": "Obligations that must be fulfilled alongside the action.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "audit": {
           "type": "boolean",

@@ -25,8 +25,17 @@ type ResourceRef struct {
 	// ID is the specific resource instance identifier (e.g., "INV-001").
 	ID string `json:"id,omitempty" yaml:"id,omitempty"`
 
+	// Owner identifies the resource owner when known at authorization time.
+	Owner string `json:"owner,omitempty" yaml:"owner,omitempty"`
+
 	// Classification is the data sensitivity level (if known at request time).
 	Classification string `json:"classification,omitempty" yaml:"classification,omitempty"`
+
+	// Environment identifies where the resource lives.
+	Environment string `json:"environment,omitempty" yaml:"environment,omitempty"`
+
+	// Attributes are additional resource metadata used by policy conditions.
+	Attributes map[string]string `json:"attributes,omitempty" yaml:"attributes,omitempty"`
 }
 
 // Resource represents a registered resource type in OAP.

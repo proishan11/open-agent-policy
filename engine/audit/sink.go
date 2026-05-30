@@ -1,11 +1,15 @@
 package audit
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"sync"
+	"time"
 
 	"github.com/proishan11/open-agent-policy/engine/model"
 )
@@ -53,6 +57,45 @@ func (s *JSONLSink) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.writer.Close()
+}
+
+// --- Multi Sink ---
+
+// MultiSink writes each audit event to all configured sinks.
+// It is useful when deployments want durable query storage and a JSONL export.
+type MultiSink struct {
+	sinks []Sink
+}
+
+// NewMultiSink creates a sink that fans out writes and close calls.
+func NewMultiSink(sinks ...Sink) *MultiSink {
+	filtered := make([]Sink, 0, len(sinks))
+	for _, sink := range sinks {
+		if sink != nil {
+			filtered = append(filtered, sink)
+		}
+	}
+	return &MultiSink{sinks: filtered}
+}
+
+func (s *MultiSink) Write(event model.AuditEvent) error {
+	var errs []error
+	for _, sink := range s.sinks {
+		if err := sink.Write(event); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (s *MultiSink) Close() error {
+	var errs []error
+	for _, sink := range s.sinks {
+		if err := sink.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // --- Stdout Sink ---
@@ -104,4 +147,86 @@ func (s *MemorySink) Len() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.Events)
+}
+
+// Query returns in-memory audit events matching q, newest first.
+func (s *MemorySink) Query(ctx context.Context, q Query) ([]model.AuditEvent, error) {
+	q = q.Normalize()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var matched []model.AuditEvent
+	for i := len(s.Events) - 1; i >= 0; i-- {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+		event := s.Events[i]
+		if !eventMatchesQuery(event, q) {
+			continue
+		}
+		matched = append(matched, event)
+	}
+	sort.SliceStable(matched, func(i, j int) bool {
+		return eventTimestamp(matched[i]).After(eventTimestamp(matched[j]))
+	})
+
+	if q.Offset >= len(matched) {
+		return []model.AuditEvent{}, nil
+	}
+	end := q.Offset + q.Limit
+	if end > len(matched) {
+		end = len(matched)
+	}
+	return append([]model.AuditEvent(nil), matched[q.Offset:end]...), nil
+}
+
+func eventMatchesQuery(event model.AuditEvent, q Query) bool {
+	if q.AgentID != "" {
+		if event.Subject == nil || event.Subject.AgentID != q.AgentID {
+			return false
+		}
+	}
+	if q.ActorID != "" {
+		if event.Actor == nil || event.Actor.ID != q.ActorID {
+			return false
+		}
+	}
+	if q.Action != "" && event.Action != q.Action {
+		return false
+	}
+	if q.Decision != "" && event.Decision != q.Decision {
+		return false
+	}
+	if q.RequestID != "" && event.RequestID != q.RequestID {
+		return false
+	}
+	if q.RunID != "" && event.RunID != q.RunID {
+		return false
+	}
+	if q.ResourceType != "" {
+		if event.Resource == nil || event.Resource.Type != q.ResourceType {
+			return false
+		}
+	}
+	if q.ResourceID != "" {
+		if event.Resource == nil || event.Resource.ID != q.ResourceID {
+			return false
+		}
+	}
+	if !q.From.IsZero() && eventTimestamp(event).Before(q.From) {
+		return false
+	}
+	if !q.To.IsZero() && eventTimestamp(event).After(q.To) {
+		return false
+	}
+	return true
+}
+
+func eventTimestamp(event model.AuditEvent) time.Time {
+	if event.Timestamp.IsZero() {
+		return time.Time{}
+	}
+	return event.Timestamp.UTC()
 }

@@ -1,6 +1,7 @@
 package evaluator
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -17,6 +18,7 @@ import (
 func mergeConstraints(matches []matchedRule) *model.Constraints {
 	hasConstraints := false
 	merged := &model.Constraints{}
+	allowedFieldsSet := false
 
 	for _, m := range matches {
 		if len(m.rule.Constraints) == 0 {
@@ -61,12 +63,168 @@ func mergeConstraints(matches []matchedRule) *model.Constraints {
 				}
 			}
 		}
+
+		// allowedFields — intersection wins because it is the narrowest field set.
+		if v, ok := m.rule.Constraints["allowedFields"]; ok {
+			if arr, ok := toStringSlice(v); ok {
+				if !allowedFieldsSet {
+					fields := cloneStrings(arr)
+					merged.AllowedFields = &fields
+					allowedFieldsSet = true
+				} else if merged.AllowedFields != nil {
+					fields := intersectStrings(*merged.AllowedFields, arr)
+					merged.AllowedFields = &fields
+				}
+			}
+		}
+
+		// expiresIn — minimum duration wins.
+		if v, ok := m.rule.Constraints["expiresIn"]; ok {
+			if s, ok := v.(string); ok {
+				seconds := parseDurationSeconds(s)
+				if seconds > 0 {
+					if merged.ExpiresInSeconds == nil || seconds < *merged.ExpiresInSeconds {
+						merged.ExpiresInSeconds = &seconds
+					}
+				}
+			}
+		}
 	}
 
 	if !hasConstraints {
 		return nil
 	}
 	return merged
+}
+
+// validateConstraints rejects policy constraint keys the evaluator cannot enforce.
+// Silently dropping a constraint turns a narrow allow into a broad allow, so this
+// is intentionally fail-closed.
+func validateConstraints(constraints map[string]interface{}) error {
+	for key, value := range constraints {
+		switch key {
+		case "readonly":
+			if _, ok := value.(bool); !ok {
+				return fmt.Errorf("constraint %q must be boolean", key)
+			}
+		case "maxRecords", "timeWindowSeconds":
+			if toInt(value) <= 0 {
+				return fmt.Errorf("constraint %q must be a positive integer", key)
+			}
+		case "redact", "allowedFields":
+			fields, ok := toStringSlice(value)
+			if !ok || len(fields) == 0 {
+				return fmt.Errorf("constraint %q must be a non-empty string array", key)
+			}
+		case "expiresIn":
+			duration, ok := value.(string)
+			if !ok || parseDurationSeconds(duration) <= 0 {
+				return fmt.Errorf("constraint %q must be a duration such as 15m, 1h, or 24h", key)
+			}
+		default:
+			return fmt.Errorf("unsupported constraint %q", key)
+		}
+	}
+	return nil
+}
+
+// constraintsFromBackendMap maps backend-native JSON constraint names into the
+// typed decision model. Unknown keys fail closed because silently dropping a
+// constraint can widen an allow.
+func constraintsFromBackendMap(constraints map[string]interface{}) (*model.Constraints, error) {
+	if len(constraints) == 0 {
+		return nil, nil
+	}
+
+	result := &model.Constraints{}
+	allowedFieldsSet := false
+	hasConstraints := false
+
+	for key, value := range constraints {
+		switch key {
+		case "maxRecords", "max_records":
+			maxRecords := toInt(value)
+			if maxRecords <= 0 {
+				return nil, fmt.Errorf("constraint %q must be a positive integer", key)
+			}
+			if result.MaxRecords == nil || maxRecords < *result.MaxRecords {
+				result.MaxRecords = &maxRecords
+			}
+			hasConstraints = true
+		case "readonly", "readOnly", "read_only":
+			readonly, ok := value.(bool)
+			if !ok {
+				return nil, fmt.Errorf("constraint %q must be boolean", key)
+			}
+			if readonly {
+				t := true
+				result.ReadOnly = &t
+			} else if result.ReadOnly == nil {
+				f := false
+				result.ReadOnly = &f
+			}
+			hasConstraints = true
+		case "redact", "redactFields", "redact_fields":
+			fields, ok := toStringSlice(value)
+			if !ok || len(fields) == 0 {
+				return nil, fmt.Errorf("constraint %q must be a non-empty string array", key)
+			}
+			result.RedactFields = unionStrings(result.RedactFields, fields)
+			hasConstraints = true
+		case "timeWindowSeconds", "time_window_seconds":
+			timeWindowSeconds := toInt(value)
+			if timeWindowSeconds <= 0 {
+				return nil, fmt.Errorf("constraint %q must be a positive integer", key)
+			}
+			if result.TimeWindowSeconds == nil || timeWindowSeconds < *result.TimeWindowSeconds {
+				result.TimeWindowSeconds = &timeWindowSeconds
+			}
+			hasConstraints = true
+		case "allowedFields", "allowed_fields":
+			fields, ok := toStringSlice(value)
+			if !ok || len(fields) == 0 {
+				return nil, fmt.Errorf("constraint %q must be a non-empty string array", key)
+			}
+			if !allowedFieldsSet {
+				cloned := cloneStrings(fields)
+				result.AllowedFields = &cloned
+				allowedFieldsSet = true
+			} else if result.AllowedFields != nil {
+				intersected := intersectStrings(*result.AllowedFields, fields)
+				result.AllowedFields = &intersected
+			}
+			hasConstraints = true
+		case "expiresIn":
+			duration, ok := value.(string)
+			if !ok {
+				return nil, fmt.Errorf("constraint %q must be a duration such as 15m, 1h, or 24h", key)
+			}
+			seconds := parseDurationSeconds(duration)
+			if seconds <= 0 {
+				return nil, fmt.Errorf("constraint %q must be a duration such as 15m, 1h, or 24h", key)
+			}
+			if result.ExpiresInSeconds == nil || seconds < *result.ExpiresInSeconds {
+				result.ExpiresInSeconds = &seconds
+			}
+			hasConstraints = true
+		case "expiresInSeconds", "expires_in_seconds":
+			seconds := toInt(value)
+			if seconds <= 0 {
+				return nil, fmt.Errorf("constraint %q must be a positive integer", key)
+			}
+			if result.ExpiresInSeconds == nil || seconds < *result.ExpiresInSeconds {
+				result.ExpiresInSeconds = &seconds
+			}
+			hasConstraints = true
+		default:
+			return nil, fmt.Errorf("unsupported constraint %q", key)
+		}
+	}
+
+	if !hasConstraints {
+		return nil, nil
+	}
+	return result, nil
 }
 
 // mergeObligations combines obligations from all matching allow rules.
@@ -102,6 +260,27 @@ func mergeObligations(matches []matchedRule) *model.Obligations {
 		return nil
 	}
 	return merged
+}
+
+// validateObligations rejects obligation keys the evaluator/enforcement layer
+// does not currently understand.
+func validateObligations(obligations map[string]interface{}) error {
+	for key, value := range obligations {
+		switch key {
+		case "audit", "logFullRequest":
+			if _, ok := value.(bool); !ok {
+				return fmt.Errorf("obligation %q must be boolean", key)
+			}
+		case "notify":
+			notify, ok := toStringSlice(value)
+			if !ok || len(notify) == 0 {
+				return fmt.Errorf("obligation %q must be a non-empty string array", key)
+			}
+		default:
+			return fmt.Errorf("unsupported obligation %q", key)
+		}
+	}
+	return nil
 }
 
 // parseDurationSeconds converts a human duration string like "30m", "1h", "24h"
@@ -159,6 +338,8 @@ func toStringSlice(v interface{}) ([]string, bool) {
 		for _, item := range arr {
 			if s, ok := item.(string); ok {
 				result = append(result, s)
+			} else {
+				return nil, false
 			}
 		}
 		return result, true
@@ -177,6 +358,28 @@ func unionStrings(a, b []string) []string {
 	copy(result, a)
 	for _, s := range b {
 		if !seen[s] {
+			result = append(result, s)
+			seen[s] = true
+		}
+	}
+	return result
+}
+
+func cloneStrings(in []string) []string {
+	out := make([]string, len(in))
+	copy(out, in)
+	return out
+}
+
+func intersectStrings(a, b []string) []string {
+	inB := make(map[string]bool, len(b))
+	for _, s := range b {
+		inB[s] = true
+	}
+	var result []string
+	seen := make(map[string]bool)
+	for _, s := range a {
+		if inB[s] && !seen[s] {
 			result = append(result, s)
 			seen[s] = true
 		}

@@ -69,6 +69,10 @@ func NewCedarBackend(cfg CedarConfig) *CedarBackend {
 // Name returns "cedar".
 func (b *CedarBackend) Name() string { return "cedar" }
 
+// FailOpen reports whether OAP should fall back to the built-in evaluator when
+// Cedar returns a transport/configuration error.
+func (b *CedarBackend) FailOpen() bool { return b.cfg.FailOpen }
+
 // cedarRequest is the authorization request sent to Cedar.
 type cedarRequest struct {
 	Principal cedarEntityRef         `json:"principal"`

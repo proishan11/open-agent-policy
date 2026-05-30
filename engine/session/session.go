@@ -56,10 +56,20 @@ type InstanceInfo struct {
 
 // CreateSessionRequest is the API input for session creation.
 type CreateSessionRequest struct {
-	AgentID      string        `json:"agent_id"`
-	RuntimeToken string        `json:"runtime_token"`
-	Environment  string        `json:"environment,omitempty"`
-	Instance     *InstanceInfo `json:"instance,omitempty"`
+	AgentID            string        `json:"agent_id"`
+	RuntimeToken       string        `json:"runtime_token"`
+	WorkloadProofToken string        `json:"workload_proof_token,omitempty"`
+	Environment        string        `json:"environment,omitempty"`
+	Instance           *InstanceInfo `json:"instance,omitempty"`
+	ProofContext       *ProofContext `json:"-"`
+}
+
+// ProofContext describes the HTTP request context used to validate
+// request-bound workload proof tokens.
+type ProofContext struct {
+	Method      string
+	TargetURI   string
+	AccessToken string
 }
 
 // AgentRun represents one task/execution within a session.
@@ -138,6 +148,7 @@ func NewManager(s store.Store, cfg ManagerConfig) *Manager {
 //  2. Agent must have identity bindings configured
 //  3. Validate the runtime JWT: signature, issuer, expiry, subject
 //  4. Match token's issuer+subject against one of the agent's bindings
+//     WIMSE bindings also require a request-bound Workload Proof Token.
 //  5. Issue a short-lived session
 func (m *Manager) CreateSession(ctx context.Context, req CreateSessionRequest) (*AgentSession, error) {
 	// 1. Look up agent
@@ -158,7 +169,10 @@ func (m *Manager) CreateSession(ctx context.Context, req CreateSessionRequest) (
 	}
 
 	// 3+4. Validate token against bindings
-	if err := m.validator.ValidateAgainstBindings(ctx, req.RuntimeToken, agent.Spec.IdentityBindings); err != nil {
+	if err := m.validator.ValidateAgainstBindings(ctx, req.RuntimeToken, agent.Spec.IdentityBindings, ValidationContext{
+		WorkloadProofToken: req.WorkloadProofToken,
+		ProofContext:       req.ProofContext,
+	}); err != nil {
 		return nil, fmt.Errorf("identity verification failed: %w", err)
 	}
 

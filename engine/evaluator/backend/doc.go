@@ -1,27 +1,32 @@
 // Package backend defines the pluggable policy evaluation backend interface.
 //
 // OAP's evaluator handles agent lifecycle (registration, suspension, revocation),
-// delegation scoping, constraint merging, and approval workflows. The backend
-// is responsible ONLY for rule evaluation: given a request and a set of policies,
-// which rules match and what is the effect?
+// capability bounds, policy resolution, delegation scoping, grant issuance, and
+// audit. The backend is responsible ONLY for rule evaluation: given a request
+// and a set of policies, which rules match and what is the effect?
 //
-// Three backends are provided:
+// Two external backends are provided:
 //
-//   - BuiltinBackend: OAP's native deny-overrides-allow evaluator (default)
 //   - OPABackend: Delegates rule evaluation to Open Policy Agent (Rego policies)
 //   - CedarBackend: Delegates rule evaluation to AWS Cedar
 //
-// The evaluator falls back to BuiltinBackend if no backend is configured.
+// If no backend is configured, the evaluator uses OAP's native
+// deny-overrides-allow evaluator. External backends can opt into fail-open
+// fallback to that native evaluator, but production deployments should keep the
+// default fail-closed behavior.
 //
 // Architecture:
 //
 //	OAP Evaluator (always runs)
 //	  ├── Agent lookup + lifecycle check
+//	  ├── Capability check
+//	  ├── Matching policy resolution
 //	  ├── Delegation scope check
-//	  ├── PolicyBackend.Evaluate()  ← pluggable
-//	  │     ├── BuiltinBackend (default)
+//	  ├── Rule evaluation
+//	  │     ├── Native evaluator (default)
 //	  │     ├── OPABackend (Rego)
 //	  │     └── CedarBackend
-//	  ├── Constraint merging (OAP-specific)
+//	  ├── Constraint mapping
+//	  ├── Grant issuance
 //	  └── Audit event emission
 package backend

@@ -101,7 +101,21 @@
     "constraints": {
       "type": "object",
       "description": "Constraints applied.",
-      "additionalProperties": true
+      "additionalProperties": false,
+      "properties": {
+        "max_records": { "type": "integer", "minimum": 1 },
+        "redact_fields": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "allowed_fields": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "readonly": { "type": "boolean" },
+        "time_window_seconds": { "type": "integer", "minimum": 1 },
+        "expires_in_seconds": { "type": "integer", "minimum": 1 }
+      }
     },
     "grant_id": {
       "type": "string",

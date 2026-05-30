@@ -3,12 +3,12 @@ package model
 // Decision constants define the possible outcomes of policy evaluation.
 // These map to the "decision" enum in authorization-decision.schema.json.
 const (
-	DecisionAllow              = "allow"
-	DecisionAllowConstrained   = "allow_with_constraints"
-	DecisionDeny               = "deny"
-	DecisionRequireApproval    = "require_approval"
-	DecisionRequireDelegation  = "require_delegation"
-	DecisionRequireStepUpAuth  = "require_step_up_auth"
+	DecisionAllow             = "allow"
+	DecisionAllowConstrained  = "allow_with_constraints"
+	DecisionDeny              = "deny"
+	DecisionRequireApproval   = "require_approval"
+	DecisionRequireDelegation = "require_delegation"
+	DecisionRequireStepUpAuth = "require_step_up_auth"
 )
 
 // AuthorizationDecision is the structured output of the policy evaluator.
@@ -60,12 +60,15 @@ type GrantRef struct {
 // constraints are merged using "strictest wins" semantics:
 // - Numeric fields: minimum value wins
 // - Boolean fields: most restrictive wins (readonly=true wins)
-// - Array fields: union (e.g., redact fields are combined)
+// - Redaction fields: union
+// - Allowed fields: intersection
 type Constraints struct {
-	MaxRecords        *int     `json:"max_records,omitempty" yaml:"max_records,omitempty"`
-	RedactFields      []string `json:"redact_fields,omitempty" yaml:"redact_fields,omitempty"`
-	ReadOnly          *bool    `json:"readonly,omitempty" yaml:"readonly,omitempty"`
-	TimeWindowSeconds *int     `json:"time_window_seconds,omitempty" yaml:"time_window_seconds,omitempty"`
+	MaxRecords        *int      `json:"max_records,omitempty" yaml:"max_records,omitempty"`
+	RedactFields      []string  `json:"redact_fields,omitempty" yaml:"redact_fields,omitempty"`
+	ReadOnly          *bool     `json:"readonly,omitempty" yaml:"readonly,omitempty"`
+	TimeWindowSeconds *int      `json:"time_window_seconds,omitempty" yaml:"time_window_seconds,omitempty"`
+	AllowedFields     *[]string `json:"allowed_fields,omitempty" yaml:"allowed_fields,omitempty"`
+	ExpiresInSeconds  *int      `json:"expires_in_seconds,omitempty" yaml:"expires_in_seconds,omitempty"`
 
 	// Extra holds any additional constraint key-value pairs not covered above.
 	Extra map[string]interface{} `json:"extra,omitempty" yaml:"extra,omitempty"`

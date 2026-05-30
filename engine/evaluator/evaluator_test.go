@@ -157,7 +157,7 @@ func TestDenyByDefault(t *testing.T) {
 	s := memory.New()
 	s.RegisterAgent(context.Background(), &model.Agent{
 		Metadata: model.Metadata{Name: "data-agent", Namespace: "analytics"},
-		Spec:     model.AgentSpec{Owner: "data-team", Type: "workflow_agent", RiskTier: "medium", Capabilities: []string{"read"}},
+		Spec:     model.AgentSpec{Owner: "data-team", Type: "workflow_agent", RiskTier: "medium", Capabilities: []string{"db.query"}},
 		Status:   model.AgentStatus{State: model.AgentStateActive},
 	})
 	// No policies
@@ -182,7 +182,7 @@ func TestExplicitDenyOverridesAllow(t *testing.T) {
 	s := memory.New()
 	s.RegisterAgent(ctx, &model.Agent{
 		Metadata: model.Metadata{Name: "invoice-reconciler", Namespace: "finance"},
-		Spec:     model.AgentSpec{Owner: "finance-team", Type: "workflow_agent", RiskTier: "medium", Capabilities: []string{"read", "delete"}},
+		Spec:     model.AgentSpec{Owner: "finance-team", Type: "workflow_agent", RiskTier: "medium", Capabilities: []string{"erp.invoice.delete"}},
 		Status:   model.AgentStatus{State: model.AgentStateActive},
 	})
 
@@ -253,6 +253,232 @@ func TestRevokedAgentDenied(t *testing.T) {
 	}
 }
 
+func TestCapabilityIsUpperBound(t *testing.T) {
+	ctx := context.Background()
+	s := memory.New()
+	s.RegisterAgent(ctx, &model.Agent{
+		Metadata: model.Metadata{Name: "reader", Namespace: "finance"},
+		Spec: model.AgentSpec{
+			Owner:        "finance-team",
+			Type:         "workflow_agent",
+			RiskTier:     "medium",
+			Capabilities: []string{"erp.invoice.read"},
+		},
+		Status: model.AgentStatus{State: model.AgentStateActive},
+	})
+	s.AddPolicy(ctx, &model.AgentPolicy{
+		Metadata: model.Metadata{Name: "broad-policy", Namespace: "finance"},
+		Spec: model.PolicySpec{
+			Subject: model.PolicySubject{Agent: "agent://finance/reader"},
+			Rules: []model.PolicyRule{
+				{Effect: model.EffectAllow, Actions: []string{"erp.invoice.delete"}},
+			},
+		},
+	})
+
+	result := New(s).Evaluate(ctx, model.AuthorizationRequest{
+		RequestID: "test-capability",
+		Subject:   model.Subject{Type: "agent", AgentID: "agent://finance/reader"},
+		Action:    model.Action{Name: "erp.invoice.delete"},
+	})
+
+	if result.Decision.Decision != model.DecisionDeny {
+		t.Fatalf("expected deny, got %s", result.Decision.Decision)
+	}
+	if !containsSubstring(result.Decision.Reason, "capability") {
+		t.Errorf("expected capability denial, got %q", result.Decision.Reason)
+	}
+}
+
+func TestUnknownConditionFailsClosed(t *testing.T) {
+	ctx := context.Background()
+	s := memory.New()
+	s.RegisterAgent(ctx, &model.Agent{
+		Metadata: model.Metadata{Name: "agent", Namespace: "support"},
+		Spec: model.AgentSpec{
+			Owner:        "support-team",
+			Type:         "chat_agent",
+			RiskTier:     "medium",
+			Capabilities: []string{"tickets.escalate"},
+		},
+		Status: model.AgentStatus{State: model.AgentStateActive},
+	})
+	s.AddPolicy(ctx, &model.AgentPolicy{
+		Metadata: model.Metadata{Name: "bad-condition", Namespace: "support"},
+		Spec: model.PolicySpec{
+			Subject: model.PolicySubject{Agent: "agent://support/agent"},
+			Rules: []model.PolicyRule{
+				{
+					Effect:     model.EffectAllow,
+					Actions:    []string{"tickets.escalate"},
+					Conditions: map[string]interface{}{"priorityIn": []interface{}{"P1", "P2"}},
+				},
+			},
+		},
+	})
+
+	result := New(s).Evaluate(ctx, model.AuthorizationRequest{
+		RequestID: "test-unknown-condition",
+		Subject:   model.Subject{Type: "agent", AgentID: "agent://support/agent"},
+		Action:    model.Action{Name: "tickets.escalate"},
+	})
+
+	if result.Decision.Decision != model.DecisionDeny {
+		t.Fatalf("expected deny, got %s", result.Decision.Decision)
+	}
+	if !containsSubstring(result.Decision.Reason, "unsupported condition") {
+		t.Errorf("expected unsupported condition reason, got %q", result.Decision.Reason)
+	}
+}
+
+func TestUnsupportedConstraintFailsClosed(t *testing.T) {
+	ctx := context.Background()
+	s := memory.New()
+	s.RegisterAgent(ctx, &model.Agent{
+		Metadata: model.Metadata{Name: "agent", Namespace: "support"},
+		Spec: model.AgentSpec{
+			Owner:        "support-team",
+			Type:         "chat_agent",
+			RiskTier:     "medium",
+			Capabilities: []string{"tickets.list"},
+		},
+		Status: model.AgentStatus{State: model.AgentStateActive},
+	})
+	s.AddPolicy(ctx, &model.AgentPolicy{
+		Metadata: model.Metadata{Name: "bad-constraint", Namespace: "support"},
+		Spec: model.PolicySpec{
+			Subject: model.PolicySubject{Agent: "agent://support/agent"},
+			Rules: []model.PolicyRule{
+				{
+					Effect:      model.EffectAllow,
+					Actions:     []string{"tickets.list"},
+					Constraints: map[string]interface{}{"max_records": 10},
+				},
+			},
+		},
+	})
+
+	result := New(s).Evaluate(ctx, model.AuthorizationRequest{
+		RequestID: "test-unsupported-constraint",
+		Subject:   model.Subject{Type: "agent", AgentID: "agent://support/agent"},
+		Action:    model.Action{Name: "tickets.list"},
+	})
+
+	if result.Decision.Decision != model.DecisionDeny {
+		t.Fatalf("expected deny, got %s", result.Decision.Decision)
+	}
+	if !containsSubstring(result.Decision.Reason, "unsupported constraint") {
+		t.Errorf("expected unsupported constraint reason, got %q", result.Decision.Reason)
+	}
+}
+
+func TestResourceSelectorMustMatch(t *testing.T) {
+	ctx := context.Background()
+	s := memory.New()
+	s.RegisterAgent(ctx, &model.Agent{
+		Metadata: model.Metadata{Name: "agent", Namespace: "finance"},
+		Spec: model.AgentSpec{
+			Owner:        "finance-team",
+			Type:         "workflow_agent",
+			RiskTier:     "medium",
+			Capabilities: []string{"erp.invoice.read"},
+		},
+		Status: model.AgentStatus{State: model.AgentStateActive},
+	})
+	s.AddPolicy(ctx, &model.AgentPolicy{
+		Metadata: model.Metadata{Name: "resource-scoped", Namespace: "finance"},
+		Spec: model.PolicySpec{
+			Subject: model.PolicySubject{Agent: "agent://finance/agent"},
+			Rules: []model.PolicyRule{
+				{
+					Effect:  model.EffectAllow,
+					Actions: []string{"erp.invoice.read"},
+					Resources: &model.PolicyResourceSelector{
+						Types: []string{"erp.invoice"},
+					},
+				},
+			},
+		},
+	})
+
+	result := New(s).Evaluate(ctx, model.AuthorizationRequest{
+		RequestID: "test-resource",
+		Subject:   model.Subject{Type: "agent", AgentID: "agent://finance/agent"},
+		Action:    model.Action{Name: "erp.invoice.read"},
+		Resource:  &model.ResourceRef{Type: "erp.payment", ID: "PAY-001"},
+	})
+
+	if result.Decision.Decision != model.DecisionDeny {
+		t.Fatalf("expected deny, got %s", result.Decision.Decision)
+	}
+}
+
+func TestAllowedFieldsAndExpiresInConstraints(t *testing.T) {
+	ctx := context.Background()
+	s := memory.New()
+	s.RegisterAgent(ctx, &model.Agent{
+		Metadata: model.Metadata{Name: "agent", Namespace: "support"},
+		Spec: model.AgentSpec{
+			Owner:        "support-team",
+			Type:         "chat_agent",
+			RiskTier:     "medium",
+			Capabilities: []string{"ticket.update"},
+		},
+		Status: model.AgentStatus{State: model.AgentStateActive},
+	})
+	s.AddPolicy(ctx, &model.AgentPolicy{
+		Metadata: model.Metadata{Name: "wide", Namespace: "support"},
+		Spec: model.PolicySpec{
+			Subject: model.PolicySubject{Agent: "agent://support/agent"},
+			Rules: []model.PolicyRule{
+				{
+					Effect:  model.EffectAllow,
+					Actions: []string{"ticket.update"},
+					Constraints: map[string]interface{}{
+						"allowedFields": []interface{}{"status", "priority", "assignee"},
+						"expiresIn":     "15m",
+					},
+				},
+			},
+		},
+	})
+	s.AddPolicy(ctx, &model.AgentPolicy{
+		Metadata: model.Metadata{Name: "narrow", Namespace: "support"},
+		Spec: model.PolicySpec{
+			Subject: model.PolicySubject{Agent: "agent://support/agent"},
+			Rules: []model.PolicyRule{
+				{
+					Effect:  model.EffectAllow,
+					Actions: []string{"ticket.update"},
+					Constraints: map[string]interface{}{
+						"allowedFields": []interface{}{"status", "assignee"},
+						"expiresIn":     "5m",
+					},
+				},
+			},
+		},
+	})
+
+	result := New(s).Evaluate(ctx, model.AuthorizationRequest{
+		RequestID: "test-constraints",
+		Subject:   model.Subject{Type: "agent", AgentID: "agent://support/agent"},
+		Action:    model.Action{Name: "ticket.update"},
+	})
+
+	if result.Decision.Decision != model.DecisionAllowConstrained {
+		t.Fatalf("expected allow_with_constraints, got %s", result.Decision.Decision)
+	}
+	if result.Decision.Constraints == nil || result.Decision.Constraints.AllowedFields == nil {
+		t.Fatal("expected allowed_fields constraint")
+	}
+	if !sameStringSet(*result.Decision.Constraints.AllowedFields, []string{"status", "assignee"}) {
+		t.Errorf("allowed_fields = %v, want status+assignee", *result.Decision.Constraints.AllowedFields)
+	}
+	if result.Decision.Constraints.ExpiresInSeconds == nil || *result.Decision.Constraints.ExpiresInSeconds != 300 {
+		t.Errorf("expires_in_seconds = %v, want 300", result.Decision.Constraints.ExpiresInSeconds)
+	}
+}
+
 // --- Helpers ---
 
 func containsSubstring(s, substr string) bool {
@@ -270,6 +496,25 @@ func searchSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func sameStringSet(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for _, expected := range want {
+		found := false
+		for _, actual := range got {
+			if actual == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 func checkConstraints(t *testing.T, got *model.Constraints, expected map[string]interface{}) {
@@ -309,6 +554,20 @@ func checkConstraints(t *testing.T, got *model.Constraints, expected map[string]
 					t.Errorf("constraint redact: missing field %q in %v", field, got.RedactFields)
 				}
 			}
+		}
+	}
+
+	if v, ok := expected["allowedFields"]; ok {
+		expectedAllowed, _ := toStringSlice(v)
+		if got.AllowedFields == nil || !sameStringSet(*got.AllowedFields, expectedAllowed) {
+			t.Errorf("constraint allowedFields: got %v, want %v", got.AllowedFields, expectedAllowed)
+		}
+	}
+
+	if v, ok := expected["expiresInSeconds"]; ok {
+		expectedExpires := toInt(v)
+		if got.ExpiresInSeconds == nil || *got.ExpiresInSeconds != expectedExpires {
+			t.Errorf("constraint expiresInSeconds: got %v, want %d", got.ExpiresInSeconds, expectedExpires)
 		}
 	}
 }

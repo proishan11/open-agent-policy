@@ -10,7 +10,7 @@ OPA, Cedar, and OpenFGA are mature policy engines. Building a competing evaluato
 
 ## Decision
 
-OAP ships with a built-in YAML policy evaluator sufficient for most use cases. The evaluator is behind a `PolicyEvaluator` interface. Enterprises already running OPA or Cedar can swap in an adapter. OAP still owns agent-native context enrichment (registry lookups, delegation verification, constraint merging, grant issuance, audit) — only the rule evaluation step is delegated.
+OAP ships with a built-in YAML policy evaluator sufficient for most use cases. The evaluator can also delegate rule evaluation through the `engine/evaluator/backend.Backend` interface, and `oap-server` exposes built-in, OPA, and Cedar backend selection. OAP still owns agent-native context enrichment (registry lookups, capability checks, delegation verification, grant issuance, and audit) — only the rule evaluation step is delegated.
 
 ## Consequences
 

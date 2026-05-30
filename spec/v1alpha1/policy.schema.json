@@ -76,7 +76,7 @@
         "rules": {
           "type": "array",
           "minItems": 1,
-          "description": "Authorization rules evaluated in order.",
+          "description": "Authorization rules evaluated with deny-overrides semantics across all matching policies.",
           "items": {
             "$ref": "#/$defs/rule"
           }
@@ -134,7 +134,7 @@
         "conditions": {
           "type": "object",
           "description": "Boolean prerequisites. If any condition is not met, the rule does not match.",
-          "additionalProperties": true,
+          "additionalProperties": false,
           "properties": {
             "actorRequired": {
               "type": "boolean",
@@ -176,13 +176,17 @@
                   "items": { "type": "string", "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] }
                 }
               }
+            },
+            "delegationRequired": {
+              "type": "boolean",
+              "description": "If true, a verified delegation must be present in request context."
             }
           }
         },
         "constraints": {
           "type": "object",
           "description": "Restrictions applied to the granted access. Only valid for effect: allow.",
-          "additionalProperties": true,
+          "additionalProperties": false,
           "properties": {
             "readonly": {
               "type": "boolean",
@@ -196,7 +200,19 @@
             "redact": {
               "type": "array",
               "items": { "type": "string" },
+              "minItems": 1,
               "description": "Fields to redact from responses."
+            },
+            "allowedFields": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "description": "Fields the agent may modify or return."
+            },
+            "timeWindowSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum time window for completing the action."
             },
             "expiresIn": {
               "type": "string",
@@ -208,7 +224,7 @@
         "obligations": {
           "type": "object",
           "description": "Requirements that must be fulfilled.",
-          "additionalProperties": true,
+          "additionalProperties": false,
           "properties": {
             "audit": {
               "type": "boolean"
@@ -218,7 +234,8 @@
             },
             "notify": {
               "type": "array",
-              "items": { "type": "string" }
+              "items": { "type": "string" },
+              "minItems": 1
             }
           }
         },

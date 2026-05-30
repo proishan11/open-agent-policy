@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -43,6 +44,89 @@ func TestMemorySink(t *testing.T) {
 
 	if err := sink.Close(); err != nil {
 		t.Errorf("Close: %v", err)
+	}
+}
+
+func TestMemorySinkQueryFiltersAndPaginates(t *testing.T) {
+	sink := NewMemorySink()
+	base := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)
+
+	events := []model.AuditEvent{
+		{
+			EventID:   "evt-1",
+			EventType: "authorization.decision",
+			Timestamp: base,
+			Decision:  "allow",
+			Subject:   &model.AuditSubject{AgentID: "agent://test/agent-a"},
+			Actor:     &model.AuditActor{Type: "user", ID: "alice@example.com"},
+			Action:    "tickets.read",
+			Resource:  &model.AuditResource{Type: "ticket", ID: "T-1"},
+			RequestID: "req-1",
+			RunID:     "run-1",
+			Reason:    "allowed",
+		},
+		{
+			EventID:   "evt-2",
+			EventType: "authorization.decision",
+			Timestamp: base.Add(time.Minute),
+			Decision:  "deny",
+			Subject:   &model.AuditSubject{AgentID: "agent://test/agent-b"},
+			Actor:     &model.AuditActor{Type: "user", ID: "bob@example.com"},
+			Action:    "tickets.write",
+			Resource:  &model.AuditResource{Type: "ticket", ID: "T-2"},
+			RequestID: "req-2",
+			RunID:     "run-2",
+			Reason:    "denied",
+		},
+		{
+			EventID:   "evt-3",
+			EventType: "authorization.decision",
+			Timestamp: base.Add(2 * time.Minute),
+			Decision:  "allow",
+			Subject:   &model.AuditSubject{AgentID: "agent://test/agent-a"},
+			Actor:     &model.AuditActor{Type: "user", ID: "alice@example.com"},
+			Action:    "tickets.read",
+			Resource:  &model.AuditResource{Type: "ticket", ID: "T-3"},
+			RequestID: "req-3",
+			RunID:     "run-3",
+			Reason:    "allowed",
+		},
+	}
+	for _, event := range events {
+		if err := sink.Write(event); err != nil {
+			t.Fatalf("Write: %v", err)
+		}
+	}
+
+	got, err := sink.Query(context.Background(), Query{
+		AgentID:  "agent://test/agent-a",
+		Decision: "allow",
+		From:     base.Add(30 * time.Second),
+		Limit:    1,
+	})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d events, want 1", len(got))
+	}
+	if got[0].EventID != "evt-3" {
+		t.Fatalf("got event %s, want evt-3", got[0].EventID)
+	}
+
+	got, err = sink.Query(context.Background(), Query{
+		ResourceType: "ticket",
+		Offset:       1,
+		Limit:        1,
+	})
+	if err != nil {
+		t.Fatalf("Query page: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d events, want 1", len(got))
+	}
+	if got[0].EventID != "evt-2" {
+		t.Fatalf("got event %s, want evt-2", got[0].EventID)
 	}
 }
 

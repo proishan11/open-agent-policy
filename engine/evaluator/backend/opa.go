@@ -79,15 +79,19 @@ func NewOPABackend(cfg OPAConfig) *OPABackend {
 // Name returns "opa".
 func (b *OPABackend) Name() string { return "opa" }
 
+// FailOpen reports whether OAP should fall back to the built-in evaluator when
+// OPA returns a transport/configuration error.
+func (b *OPABackend) FailOpen() bool { return b.cfg.FailOpen }
+
 // opaInput is the JSON structure sent to OPA.
 type opaInput struct {
 	Input opaInputBody `json:"input"`
 }
 
 type opaInputBody struct {
-	Agent    *model.Agent                `json:"agent"`
-	Request  model.AuthorizationRequest  `json:"request"`
-	Policies []*model.AgentPolicy        `json:"policies"`
+	Agent    *model.Agent               `json:"agent"`
+	Request  model.AuthorizationRequest `json:"request"`
+	Policies []*model.AgentPolicy       `json:"policies"`
 }
 
 // opaResponse is the JSON structure returned by OPA.
@@ -100,6 +104,8 @@ type opaResult struct {
 	Reason      string                 `json:"reason"`
 	PolicyIDs   []string               `json:"policy_ids"`
 	Constraints map[string]interface{} `json:"constraints"`
+	Obligations *model.Obligations     `json:"obligations"`
+	Approval    *model.ApprovalRef     `json:"approval"`
 }
 
 // Evaluate sends the authorization request to OPA and maps the response.
@@ -162,6 +168,8 @@ func (b *OPABackend) Evaluate(ctx context.Context, input Input) (*Result, error)
 		Reason:      opaResp.Result.Reason,
 		PolicyIDs:   opaResp.Result.PolicyIDs,
 		Constraints: opaResp.Result.Constraints,
+		Obligations: opaResp.Result.Obligations,
+		Approval:    opaResp.Result.Approval,
 	}
 
 	// Default to deny if OPA returns empty decision

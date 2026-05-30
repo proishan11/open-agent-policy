@@ -9,7 +9,7 @@ import (
 
 func TestIssueAndVerify(t *testing.T) {
 	issuer := NewIssuer(IssuerConfig{
-		SigningKey:  "test-secret-key-at-least-32-bytes!",
+		SigningKey: "test-secret-key-at-least-32-bytes!",
 		IssuerName: "test-server",
 		DefaultTTL: 15 * time.Minute,
 	})
@@ -62,9 +62,43 @@ func TestIssueAndVerify(t *testing.T) {
 	}
 }
 
+func TestIssueUsesDecisionExpiryConstraint(t *testing.T) {
+	issuer := NewIssuer(IssuerConfig{
+		SigningKey: "test-secret-key-at-least-32-bytes!",
+		DefaultTTL: 15 * time.Minute,
+	})
+
+	expiresIn := 120
+	decision := model.AuthorizationDecision{
+		DecisionID: "dec-short-ttl",
+		Decision:   model.DecisionAllowConstrained,
+		Constraints: &model.Constraints{
+			ExpiresInSeconds: &expiresIn,
+		},
+	}
+
+	token, err := issuer.Issue("agent://test/agent", decision)
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	claims, err := issuer.Verify(token)
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+
+	gotTTL := claims.ExpiresAt - claims.IssuedAt
+	if gotTTL != int64(expiresIn) {
+		t.Errorf("ttl = %d, want %d", gotTTL, expiresIn)
+	}
+	if issuer.EffectiveTTLSeconds(decision) != expiresIn {
+		t.Errorf("EffectiveTTLSeconds = %d, want %d", issuer.EffectiveTTLSeconds(decision), expiresIn)
+	}
+}
+
 func TestVerifyExpiredToken(t *testing.T) {
 	issuer := NewIssuer(IssuerConfig{
-		SigningKey:  "test-secret-key-at-least-32-bytes!",
+		SigningKey: "test-secret-key-at-least-32-bytes!",
 		DefaultTTL: -1 * time.Hour, // already expired
 	})
 

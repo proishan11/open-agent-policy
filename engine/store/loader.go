@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -103,8 +104,12 @@ func LoadFile(ctx context.Context, s Store, path string) error {
 func unmarshal(data []byte, ext string, v interface{}) error {
 	switch ext {
 	case ".json":
-		return json.Unmarshal(data, v)
+		dec := json.NewDecoder(bytes.NewReader(data))
+		dec.DisallowUnknownFields()
+		return dec.Decode(v)
 	default:
-		return yaml.Unmarshal(data, v)
+		dec := yaml.NewDecoder(bytes.NewReader(data))
+		dec.KnownFields(true)
+		return dec.Decode(v)
 	}
 }

@@ -72,3 +72,10 @@ type Store interface {
 	// AddTool creates or replaces a tool.
 	AddTool(ctx context.Context, tool *model.Tool) error
 }
+
+// HealthChecker is implemented by stores that can cheaply verify dependency
+// readiness. Server readiness uses this when available and falls back to a
+// lightweight Store call for custom stores.
+type HealthChecker interface {
+	CheckHealth(ctx context.Context) error
+}

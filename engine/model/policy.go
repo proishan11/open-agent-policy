@@ -25,8 +25,8 @@ type PolicySpec struct {
 	// If multiple fields are set, all must match.
 	Subject PolicySubject `json:"subject" yaml:"subject"`
 
-	// Rules are evaluated in order. The first matching rule determines the effect.
-	// However, deny rules always win regardless of order (deny-overrides-allow).
+	// Rules are evaluated with deny-overrides semantics across all matching
+	// policies. Require-approval rules take precedence over allow rules.
 	Rules []PolicyRule `json:"rules" yaml:"rules"`
 }
 

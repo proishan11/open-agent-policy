@@ -54,6 +54,10 @@ type AgentSpec struct {
 	// Capabilities lists what the agent can do at a high level.
 	Capabilities []string `json:"capabilities" yaml:"capabilities"`
 
+	// WorkloadIdentity records the standards-compatible workload identity
+	// associated with this logical agent, such as a SPIFFE ID.
+	WorkloadIdentity *WorkloadIdentityProfile `json:"workloadIdentity,omitempty" yaml:"workloadIdentity,omitempty"`
+
 	// IdentityBindings maps verifiable runtime identities to this agent.
 	// OAP checks the runtime token's issuer+subject against these bindings
 	// to cryptographically prove which agent a workload is.
@@ -67,12 +71,31 @@ type AgentSpec struct {
 	Tools []AgentToolBinding `json:"tools,omitempty" yaml:"tools,omitempty"`
 }
 
+// WorkloadIdentityProfile records the standards-compatible workload identity
+// for an OAP agent. The logical OAP ID remains agent://<namespace>/<name>;
+// this profile maps it to a deployment identity such as a SPIFFE ID.
+type WorkloadIdentityProfile struct {
+	// ID is the stable workload identifier URI, preferably a SPIFFE ID.
+	ID string `json:"id" yaml:"id"`
+
+	// Type identifies the workload identity profile.
+	// One of: "spiffe", "wimse", "custom_uri".
+	Type string `json:"type,omitempty" yaml:"type,omitempty"`
+
+	// TrustDomain identifies the issuing or governing trust domain.
+	TrustDomain string `json:"trustDomain,omitempty" yaml:"trustDomain,omitempty"`
+
+	// AttestationLevel records the assurance level behind this identity.
+	// One of: "none", "platform", "hardware", "supply_chain".
+	AttestationLevel string `json:"attestationLevel,omitempty" yaml:"attestationLevel,omitempty"`
+}
+
 // IdentityBinding maps a verifiable runtime identity to this agent.
 // When an agent workload presents a token, OAP verifies the token's
 // issuer and subject match a registered binding before trusting the identity.
 type IdentityBinding struct {
 	// Type is the identity mechanism.
-	// One of: "oidc_client", "kubernetes_service_account", "spiffe", "mtls".
+	// One of: "oidc_client", "kubernetes_service_account", "spiffe", "wimse".
 	Type string `json:"type" yaml:"type"`
 
 	// Provider is a human-readable name (e.g., "keycloak", "okta", "azure-ad").
@@ -81,9 +104,14 @@ type IdentityBinding struct {
 	// Issuer is the expected token issuer URL.
 	Issuer string `json:"issuer" yaml:"issuer"`
 
+	// JWKSURI is an explicit key set or SPIFFE bundle endpoint.
+	// Use this when the issuer does not expose OIDC discovery.
+	JWKSURI string `json:"jwksUri,omitempty" yaml:"jwksUri,omitempty"`
+
 	// Subject is the expected token subject or authorized party.
 	// For OIDC client_credentials: the client_id or azp claim.
 	// For K8s: "system:serviceaccount:<ns>:<name>".
+	// For SPIFFE/WIMSE: the workload identifier URI in the sub claim.
 	Subject string `json:"subject" yaml:"subject"`
 
 	// Audience is the expected audience claim (optional).

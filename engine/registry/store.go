@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -240,8 +241,12 @@ func (s *Store) LoadFile(path string) error {
 func unmarshal(data []byte, ext string, v interface{}) error {
 	switch ext {
 	case ".json":
-		return json.Unmarshal(data, v)
+		dec := json.NewDecoder(bytes.NewReader(data))
+		dec.DisallowUnknownFields()
+		return dec.Decode(v)
 	default:
-		return yaml.Unmarshal(data, v)
+		dec := yaml.NewDecoder(bytes.NewReader(data))
+		dec.KnownFields(true)
+		return dec.Decode(v)
 	}
 }

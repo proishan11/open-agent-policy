@@ -14,13 +14,14 @@ is between OAP's evaluator and the external policy engine.
 
 OAP's evaluator is split into two layers:
 
-1. **OAP Evaluator (always runs)** — handles agent lifecycle, delegation, constraint
-   merging, approval workflows, and audit. This is OAP-specific logic that external
-   engines don't have.
+1. **OAP Evaluator (always runs)** — handles request validation, agent
+   lifecycle, capability bounds, policy resolution, delegation scope, grant
+   issuance, constraint mapping, and audit. This is OAP-specific logic that
+   external engines don't have.
 
 2. **Policy Backend (pluggable)** — handles rule evaluation: given a request and
-   matching policies, which rules fire and what is the effect? Three backends exist:
-   - `BuiltinBackend` — OAP's native deny-overrides-allow evaluator (default)
+   matching policies, which rules fire and what is the effect?
+   - Native evaluator — OAP's built-in deny-overrides-allow evaluator (default)
    - `OPABackend` — delegates to Open Policy Agent via REST API
    - `CedarBackend` — delegates to AWS Cedar / Verified Permissions
 
@@ -37,10 +38,11 @@ type Backend interface {
 
 - Agent registration check (unregistered → deny)
 - Agent status check (suspended/revoked → deny)
+- Capability check
 - Policy-to-agent matching
 - Delegation scope validation
-- Constraint merging (strictest wins)
-- Approval workflow orchestration
+- Constraint mapping and fail-closed validation of backend constraints
+- Grant issuance
 - Audit event emission
 
 ### What the backend handles (delegated)
@@ -51,14 +53,14 @@ type Backend interface {
 ### Fail behavior
 
 - **fail-closed (default)**: if the backend is unreachable, deny the request
-- **fail-open (configurable)**: return an error so the evaluator can fall back to BuiltinBackend
+- **fail-open (configurable)**: return an error so the evaluator can fall back to the native evaluator
 
 ## Consequences
 
 - Enterprises with existing OPA infrastructure write Rego policies that reference OAP concepts
 - Enterprises using AWS Verified Permissions use Cedar policies natively
 - OAP still enforces agent identity, constraints, and audit regardless of backend
-- No vendor lock-in — the default BuiltinBackend requires no external services
+- No vendor lock-in — the default native evaluator requires no external services
 - The backend interface is small (1 method) making new backends easy to add
 
 ## Alternatives Considered

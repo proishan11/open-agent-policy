@@ -96,11 +96,12 @@ func (iss *Issuer) Issue(agentID string, decision model.AuthorizationDecision) (
 // IssueScoped creates a signed JWT grant with full resource scoping.
 func (iss *Issuer) IssueScoped(req GrantRequest) (string, error) {
 	now := time.Now().UTC()
+	ttl := iss.effectiveTTL(req.Decision)
 	claims := Claims{
 		Issuer:       iss.issuerName,
 		Subject:      req.AgentID,
 		Audience:     req.Audience,
-		ExpiresAt:    now.Add(iss.defaultTTL).Unix(),
+		ExpiresAt:    now.Add(ttl).Unix(),
 		IssuedAt:     now.Unix(),
 		JWTID:        req.Decision.DecisionID,
 		Action:       req.Action,
@@ -114,6 +115,20 @@ func (iss *Issuer) IssueScoped(req GrantRequest) (string, error) {
 	}
 
 	return iss.sign(claims)
+}
+
+// EffectiveTTLSeconds returns the grant lifetime implied by a decision.
+func (iss *Issuer) EffectiveTTLSeconds(decision model.AuthorizationDecision) int {
+	return int(iss.effectiveTTL(decision).Seconds())
+}
+
+func (iss *Issuer) effectiveTTL(decision model.AuthorizationDecision) time.Duration {
+	if decision.Constraints != nil &&
+		decision.Constraints.ExpiresInSeconds != nil &&
+		*decision.Constraints.ExpiresInSeconds > 0 {
+		return time.Duration(*decision.Constraints.ExpiresInSeconds) * time.Second
+	}
+	return iss.defaultTTL
 }
 
 // Verify validates a grant token and returns the claims.

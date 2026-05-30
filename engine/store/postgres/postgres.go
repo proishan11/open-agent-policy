@@ -28,6 +28,7 @@ type Store struct {
 
 // Verify interface compliance.
 var _ store.Store = (*Store)(nil)
+var _ store.HealthChecker = (*Store)(nil)
 
 // New creates a Postgres store and runs schema migrations.
 func New(ctx context.Context, connString string) (*Store, error) {
@@ -55,10 +56,12 @@ func (s *Store) Close() {
 	s.pool.Close()
 }
 
-// ensureSchema applies migrations.
-func (s *Store) ensureSchema(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, Schema)
-	return err
+// CheckHealth verifies that the Postgres connection pool can reach the database.
+func (s *Store) CheckHealth(ctx context.Context) error {
+	if err := s.pool.Ping(ctx); err != nil {
+		return fmt.Errorf("postgres: health check: %w", err)
+	}
+	return nil
 }
 
 // --- Agent operations ---

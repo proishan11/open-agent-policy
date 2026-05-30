@@ -13,9 +13,9 @@ The engine decides whether an agent is allowed to perform an action. It implemen
 ```
 engine/
 ├── model/       Domain types (AuthorizationRequest, Decision, Agent, Policy, etc.)
-├── registry/    In-memory registries for agents, resources, tools, policies
+├── store/       Pluggable stores for agents, resources, tools, policies
 ├── evaluator/   Policy evaluation engine (the decision point)
-└── audit/       Audit event sinks (JSONL, stdout, memory)
+└── audit/       Audit event sinks and query contract
 ```
 
 ## Key Interfaces
@@ -32,12 +32,12 @@ result := eval.Evaluate(ctx, request)
 ### Registry Store
 
 ```go
-store := registry.NewStore()
-store.LoadDir("path/to/data/")  // loads Agents, Policies, Resources, Tools from YAML/JSON
-store.RegisterAgent(&agent)
-store.AddPolicy(&policy)
-agent := store.GetAgent("agent://finance/invoice-reconciler")
-policies := store.PoliciesForAgent(agent)
+s := memory.New()
+store.LoadDir(ctx, s, "path/to/data/")  // loads Agents, Policies, Resources, Tools from YAML/JSON
+s.RegisterAgent(ctx, &agent)
+s.AddPolicy(ctx, &policy)
+agent, _ := s.GetAgent(ctx, "agent://finance/invoice-reconciler")
+policies, _ := s.PoliciesForAgent(ctx, agent)
 ```
 
 ### Audit Sink
@@ -46,6 +46,8 @@ policies := store.PoliciesForAgent(agent)
 sink, _ := audit.NewJSONLSink("/var/log/oap/audit.jsonl")
 sink.Write(event)
 ```
+
+Queryable durable audit storage is provided by the Postgres audit sink in `engine/store/postgres`. The Postgres backend also owns ordered schema migrations with version, name, checksum, and advisory-lock metadata.
 
 ## Data Flow
 

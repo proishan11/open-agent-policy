@@ -24,6 +24,7 @@ type Store struct {
 
 // Verify interface compliance.
 var _ store.Store = (*Store)(nil)
+var _ store.HealthChecker = (*Store)(nil)
 
 // New creates an empty in-memory store.
 func New() *Store {
@@ -33,6 +34,13 @@ func New() *Store {
 		tools:     make(map[string]*model.Tool),
 		policies:  make(map[string]*model.AgentPolicy),
 	}
+}
+
+// CheckHealth verifies that the in-memory store is usable.
+func (s *Store) CheckHealth(_ context.Context) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return nil
 }
 
 // --- Agent operations ---
