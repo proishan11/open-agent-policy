@@ -6,6 +6,25 @@
 
 ---
 
+## Next Work Queue
+
+These are the next enterprise-readiness priorities to pick up after the current
+foundation work:
+
+1. **Secure control-plane admin APIs** — add real admin auth/RBAC for policy
+   apply/list, audit query, agent management, and other management endpoints.
+2. **Make approval lifecycle durable** — persist approval requests, support
+   completion/expiry/revocation, emit approval audit events, and issue grants
+   after approval.
+3. **Add Cedar validation parity** — build a Cedar-compatible validation service
+   and Docker Compose profile equivalent to the OPA sidecar profile.
+4. **Operational hardening** — write migration, backup/restore, backend timeout,
+   circuit-breaker, SIEM/OTEL, and production configuration runbooks.
+5. **Developer adoption** — add TypeScript SDK support and examples for OpenAI
+   Agents SDK, CrewAI, AutoGen, and LlamaIndex.
+
+---
+
 ## Milestone 1: Spec + Conformance Tests
 
 ### Schemas
