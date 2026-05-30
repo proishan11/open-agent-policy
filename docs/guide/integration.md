@@ -189,6 +189,10 @@ agent = create_agent(llm=llm, tools=protected)
 6. **Constrained** → injects constraints into tool input, then executes
 7. Every decision is audited
 
+See [examples/minimal-agent/langchain_agent.py](../../examples/minimal-agent/langchain_agent.py)
+for a runnable LangChain/Ollama example where the model chooses tools and each
+tool call is authorized by OAP before execution.
+
 ---
 
 ## 4. HTTP Gateway (no code changes)
@@ -408,6 +412,9 @@ except OAPError as e:
 
 ## Next steps
 
+- [Building Agents With OAP](building-agents-with-oap.md) — End-to-end agent builder path
+- [Protecting Resource APIs](protecting-resource-apis.md) — Resource-side grant validation
+- [Approval Workflows](approval-workflows.md) — Approval-required decisions and scope validation
 - [Getting Started](getting-started.md) — Setup and first agent
 - [Identity & Sessions](identity-and-sessions.md) — Identity bindings, supported providers, sessions, runs, grant tokens
 - [Writing Policies](writing-policies.md) — Policy authoring guide

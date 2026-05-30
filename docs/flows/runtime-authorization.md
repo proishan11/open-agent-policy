@@ -26,11 +26,14 @@ sequenceDiagram
     else Agent suspended/revoked
         Eval-->>EP: DENY (inactive)
     else Agent active
+        Eval->>Eval: Check declared capability<br/>(capabilities are an upper bound)
         Eval->>Reg: PoliciesForAgent(agent)
         Reg-->>Eval: matching policies
 
         Eval->>Eval: Scan rules (deny → require_approval → allow)
-        Eval->>Eval: Check conditions (actorRequired, delegation)
+        Eval->>Eval: Match action + resource selector
+        Eval->>Eval: Check supported conditions
+        Eval->>Eval: Validate constraints + obligations
         Eval->>Eval: Merge constraints (strictest wins)
 
         alt Explicit deny matched
@@ -117,18 +120,31 @@ sequenceDiagram
 
 1. Validate request (agent_id, action required)
 2. Verify agent is registered and active
-3. Find matching policies (by agent ID, type, namespace, or all-agents)
-4. Scan all rules across all matching policies
-5. **Deny rules first** — any match → deny (Principle 3)
-6. **Require-approval rules** — any match → require_approval
-7. **Allow rules** — any match → allow
-8. No matching allow → deny by default (Principle 2)
-9. Merge constraints from all matching allow rules (strictest wins)
-10. Emit audit event (Principle 5)
+3. Check the requested action is within the agent's declared capabilities
+4. Find matching policies (by agent ID, type, namespace, or all-agents)
+5. Check delegation scope when delegation context is present
+6. Scan all rules across all matching policies
+7. Match action and resource selector
+8. Evaluate supported conditions
+9. Validate constraints and obligations
+10. **Deny rules first** - any match -> deny (Principle 3)
+11. **Require-approval rules** - any match -> require_approval
+12. **Allow rules** - any match -> allow
+13. No matching allow -> deny by default (Principle 2)
+14. Merge constraints from all matching allow rules (strictest wins)
+15. Emit audit event (Principle 5)
 
 ## Constraint Merging
 
 When multiple allow rules match, constraints are merged conservatively:
-- **Numeric** (max_records): take the minimum
+- **Numeric** (maxRecords): take the minimum
 - **Boolean** (readonly): true wins over false
-- **Arrays** (redact_fields): union of all values
+- **Arrays** (redact): union of all values
+- **Arrays** (allowedFields): intersection wins
+
+## Fail-Closed Policy Vocabulary
+
+The built-in evaluator rejects unsupported condition, constraint, and obligation keys.
+For example, `priorityIn` and `recipientDomain` are not enforced unless they are
+added to the spec and evaluator. Unknown policy vocabulary is treated as a policy
+error, not as an advisory hint.

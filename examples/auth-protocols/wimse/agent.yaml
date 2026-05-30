@@ -1,0 +1,24 @@
+apiVersion: oap.dev/v1alpha1
+kind: Agent
+metadata:
+  name: payment-agent
+  namespace: payments
+spec:
+  owner: group:payments-platform
+  type: autonomous_agent
+  riskTier: high
+  capabilities:
+    - payment.read
+  workloadIdentity:
+    id: "wimse://company.com/service/payment-agent"
+    type: wimse
+    trustDomain: company.com
+    attestationLevel: platform
+  identityBindings:
+    - type: wimse
+      provider: wimse-idp
+      issuer: "https://identity.company.com/workloads"
+      jwksUri: "https://identity.company.com/workloads/jwks.json"
+      subject: "wimse://company.com/service/payment-agent"
+      audience: "oap-server"
+

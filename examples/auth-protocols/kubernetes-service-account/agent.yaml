@@ -1,0 +1,23 @@
+apiVersion: oap.dev/v1alpha1
+kind: Agent
+metadata:
+  name: ticket-assistant
+  namespace: support
+spec:
+  owner: group:support-platform
+  type: chat_agent
+  riskTier: medium
+  capabilities:
+    - ticket.read
+  runtime:
+    platform: kubernetes
+    namespace: support
+    serviceAccount: ticket-assistant
+  identityBindings:
+    - type: kubernetes_service_account
+      provider: kubernetes
+      issuer: "https://kubernetes.default.svc"
+      jwksUri: "https://kubernetes.default.svc/openid/v1/jwks"
+      subject: "system:serviceaccount:support:ticket-assistant"
+      audience: "oap-server"
+

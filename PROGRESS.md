@@ -45,7 +45,7 @@
 - [x] .golangci.yml (Go linter config)
 - [x] pyproject.toml (ruff, pytest, coverage config)
 - [x] Makefile (lint, fmt, test, build, dev, demo, clean)
-- [x] .devcontainer/devcontainer.json (Go 1.22, Python 3.13, VS Code extensions)
+- [x] .devcontainer/devcontainer.json (Go 1.25, Python 3.13, VS Code extensions)
 - [x] .goreleaser.yaml (signed releases, SBOM, multi-platform)
 - [x] .github/workflows/ci.yml (lint, conformance, Go tests, Python tests, gitleaks, CodeQL)
 - [x] .github/workflows/release.yml (GoReleaser, Docker, Trivy scan)
@@ -61,6 +61,10 @@
 - [x] docs/adr/001-library-first-evaluator.md
 - [x] docs/adr/002-yaml-policy-format.md
 - [x] docs/adr/003-pluggable-policy-engine.md
+- [x] docs/adr/005-closed-policy-vocabulary.md
+- [x] docs/specs/enterprise-readiness-spec.md
+- [x] docs/specs/workload-identity-profile.md
+- [x] docs/specs/wimse-proof-token.md
 
 ---
 
@@ -263,13 +267,76 @@
 
 ---
 
+## Foundation Baseline Hardening - 2026-05-30
+
+**Status:** validated. See `docs/guide/foundation-baseline.md`.
+
+### Spec Contract
+- [x] `policy.schema.json` closes `conditions`, `constraints`, and `obligations`
+- [x] `authorization-decision.schema.json` includes `allowed_fields` and `expires_in_seconds`
+- [x] `grant.schema.json` and `audit-event.schema.json` document the same constrained decision fields
+- [x] OpenAPI schema matches the closed policy vocabulary
+- [x] Policy manifests use camelCase keys; decision JSON uses snake_case keys
+
+### Evaluator Semantics
+- [x] Agent capabilities are enforced as an upper bound before policy authorization
+- [x] Resource selectors are enforced (`types`, `classificationMax`, `environments`, `owners`)
+- [x] Unsupported conditions fail closed
+- [x] Unsupported constraints fail closed
+- [x] Unsupported obligations fail closed
+- [x] `allowedFields` merges by intersection
+- [x] `expiresIn` maps to decision `expires_in_seconds`
+- [x] Grant TTL honors decision `expires_in_seconds`
+
+### Strict Input Handling
+- [x] YAML/JSON file loaders reject unknown typed fields
+- [x] HTTP handlers reject unknown JSON fields for request bodies
+- [x] Examples and validation policies no longer use unsupported policy keys
+
+### Validation
+- [x] `go test ./...`
+- [x] `python3 demos/demo-01-spec-and-conformance/validate.py` (`33/33 validations passed`)
+- [x] `git diff --check`
+
+### Durable Storage And Audit Query
+- [x] Server binary storage backend selection for Postgres
+- [x] Postgres-backed audit sink wired into server mode
+- [x] `GET /v1/audit` queries query-capable sinks with indexed filters and pagination
+- [x] JSONL audit export can run alongside Postgres audit persistence
+- [x] Postgres schema is versioned through ordered migrations with advisory locking and checksums
+
+### Operational Readiness
+- [x] `/v1/health` exposes process liveness
+- [x] `/v1/ready` checks store readiness with a bounded timeout
+- [x] `/metrics` exposes Prometheus text counters for authorization, audit, and readiness
+
+### Workload Identity Profile
+- [x] Enterprise readiness feature tracks documented
+- [x] WIMSE/SPIFFE workload identity profile specified
+- [x] Agent schema supports `spec.workloadIdentity`
+- [x] Agent schema supports `spec.identityBindings`
+- [x] Unsupported identity binding types fail closed in the session token validator
+- [x] SPIFFE JWT-SVID bindings require audience and filter bundle keys to `use: jwt-svid`
+- [x] WIMSE bindings require WIT+WPT proof-of-possession, validate `cnf.jwk`, `wth`, `aud`, `exp`, `jti`, and reject process-local replay
+
+### Still Not Enterprise-GA
+- [ ] Main-path OPA/Cedar backend selection
+- [ ] Audit retention, immutable export, SIEM/OTEL integration, and legal-hold workflows
+- [ ] Production database HA, backup/restore, and online migration runbooks
+- [ ] Shared WIMSE WPT replay cache for horizontally scaled deployments
+- [ ] Production approval lifecycle
+- [ ] First-class resource attribute/business conditions
+- [ ] Multi-tenancy, admin RBAC, GitOps policy workflow, distributed tracing, alerts, dashboards, HA, runbooks
+
+---
+
 ## Phase 1: Agent Identity Binding & Sessions
 
 **Goal:** Bind verifiable runtime identities (OIDC, K8s SA, SPIFFE) to logical agents, issue session tokens.
 
 ### Identity Bindings
 - [x] `engine/model/agent.go` — Added IdentityBinding struct to AgentSpec (type, issuer, subject, audience)
-- [x] Supported binding types: oidc_client, kubernetes_sa, spiffe (JWT-based)
+- [x] Supported binding types: oidc_client, kubernetes_service_account, spiffe (JWT-based), wimse (WIT+WPT)
 
 ### Session Management
 - [x] `engine/session/session.go` — AgentSession model, Manager with in-memory store
@@ -280,9 +347,9 @@
 
 ### Token Validation
 - [x] `engine/session/token.go` — Multi-issuer JWT verification
-- [x] JWKS auto-discovery and caching via OIDC .well-known endpoints
+- [x] JWKS auto-discovery and caching via OIDC .well-known endpoints or explicit `jwksUri`
 - [x] ValidateAgainstBindings: matches JWT claims (iss, sub, aud) to agent identity bindings
-- [x] RS256/ES256 signature verification
+- [x] RS/ES/PS JWT signature verification
 
 ### Server Integration
 - [x] `server/api/server.go` — POST /v1/runtime/session endpoint

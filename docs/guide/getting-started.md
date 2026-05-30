@@ -19,7 +19,7 @@ OAP sits between your agent and the resources it accesses. It evaluates every ac
 
 ## Prerequisites
 
-- **Go 1.22+** — [install](https://go.dev/doc/install)
+- **Go 1.25+** — [install](https://go.dev/doc/install)
 - **Python 3.11+** — [install](https://www.python.org/downloads/)
 - **Docker** (optional) — for the full stack with Keycloak identity provider
 
@@ -52,13 +52,13 @@ Create an agent manifest. This tells OAP who your agent is, what it can do, and 
 
 ```yaml
 # my-agent/agents.yaml
-apiVersion: oap/v1alpha1
+apiVersion: oap.dev/v1alpha1
 kind: Agent
 metadata:
   name: invoice-reader
   namespace: finance
 spec:
-  owner: "team:finance-platform"
+  owner: "group:finance-platform"
   type: workflow_agent
   riskTier: low
   description: "Reads invoices from the ERP system"
@@ -68,15 +68,24 @@ spec:
     - erp.invoice.read
     - erp.invoice.list
 
+  # (Optional) Standards-compatible workload identity profile
+  # workloadIdentity:
+  #   id: spiffe://example.org/ns/finance/sa/invoice-reader
+  #   type: spiffe
+  #   trustDomain: example.org
+
   # (Optional) Identity binding for production
   # identityBindings:
   #   - type: oidc_client
   #     issuer: "https://auth.company.com/realms/agents"
   #     subject: "invoice-reader-client"
+  #   - type: spiffe
+  #     issuer: "https://spire.example.org"
+  #     jwksUri: "https://spire.example.org/.well-known/jwks.json"
+  #     subject: "spiffe://example.org/ns/finance/sa/invoice-reader"
+  #     audience: "oap-server"
 
-  runtime:
-    framework: langchain
-    language: python
+  framework: langchain
 ```
 
 ---
@@ -87,7 +96,7 @@ Policies define what actions are allowed, denied, or constrained.
 
 ```yaml
 # my-agent/policies.yaml
-apiVersion: oap/v1alpha1
+apiVersion: oap.dev/v1alpha1
 kind: AgentPolicy
 metadata:
   name: invoice-reader-policy
@@ -103,9 +112,9 @@ spec:
         - erp.invoice.read
         - erp.invoice.list
       constraints:
-        max_records: 50
+        maxRecords: 50
         readonly: true
-        redact_fields:
+        redact:
           - bank_account
           - tax_id
 
@@ -129,20 +138,58 @@ spec:
 
 ## 4. Test locally with the CLI
 
-```bash
-# Simulate a read request
-bin/oapctl simulate \
-  --data my-agent/ \
-  --agent "agent://finance/invoice-reader" \
-  --action "erp.invoice.read"
-# → allow_with_constraints (readonly, max_records=50, redact bank_account+tax_id)
+Create a sample authorization request:
 
-# Simulate a write request
+```json
+{
+  "request_id": "req_getting_started_001",
+  "subject": {
+    "type": "agent",
+    "agent_id": "agent://finance/invoice-reader"
+  },
+  "action": {
+    "name": "erp.invoice.read"
+  },
+  "resource": {
+    "type": "erp.invoice",
+    "id": "INV-001"
+  }
+}
+```
+
+Save it as `my-agent/read-request.json`. Then simulate the request:
+
+```bash
 bin/oapctl simulate \
   --data my-agent/ \
-  --agent "agent://finance/invoice-reader" \
-  --action "erp.invoice.delete"
-# → deny (Invoice reader is read-only)
+  -f my-agent/read-request.json
+# -> allow_with_constraints (readonly, max_records=50, redact bank_account+tax_id)
+```
+
+Create a denied request as `my-agent/delete-request.json`:
+
+```json
+{
+  "request_id": "req_getting_started_002",
+  "subject": {
+    "type": "agent",
+    "agent_id": "agent://finance/invoice-reader"
+  },
+  "action": {
+    "name": "erp.invoice.delete"
+  },
+  "resource": {
+    "type": "erp.invoice",
+    "id": "INV-001"
+  }
+}
+```
+
+```bash
+bin/oapctl simulate \
+  --data my-agent/ \
+  -f my-agent/delete-request.json
+# -> deny (Invoice reader is read-only)
 
 # Run conformance tests
 bin/oapctl test --conformance
@@ -158,14 +205,16 @@ bin/oap-server --data my-agent/ --dev
 
 # Server is now running at http://localhost:8080
 # Try the health endpoint
-curl http://localhost:8080/health
+curl http://localhost:8080/v1/health
 ```
 
 ### Server endpoints
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/health` | GET | Health check |
+| `/v1/health` | GET | Process liveness check |
+| `/v1/ready` | GET | Dependency readiness check |
+| `/metrics` | GET | Prometheus text metrics |
 | `/v1/authorize` | POST | Authorize an action |
 | `/v1/simulate` | POST | Simulate (with evaluation trace) |
 | `/v1/agents` | GET | List registered agents |
@@ -177,6 +226,12 @@ curl http://localhost:8080/health
 ---
 
 ## 6. Integrate with your agent
+
+For a runnable minimal example with both a deterministic walkthrough and an
+Ollama-backed LLM agent, see
+[examples/minimal-agent](../../examples/minimal-agent/README.md). For the
+complete end-to-end agent builder guide, see
+[Building Agents With OAP](building-agents-with-oap.md).
 
 ### Option A: Python SDK (recommended)
 
@@ -270,7 +325,12 @@ p := proxy.New(proxy.Config{
 
 ## 7. Production setup with identity verification
 
-In production, agents prove their identity via OIDC tokens. This prevents agents from impersonating each other.
+In production, agents prove their identity via OIDC, Kubernetes ServiceAccount,
+SPIFFE JWT-SVID, or WIMSE WIT+WPT proof-of-possession. This prevents agents from
+impersonating each other.
+
+For provider-specific setup, see
+[Authentication Protocols](authentication-protocols.md).
 
 ### Step 1: Add identity binding to your agent
 
@@ -280,6 +340,16 @@ spec:
     - type: oidc_client
       issuer: "https://auth.company.com/realms/agents"
       subject: "invoice-reader-client"
+    - type: spiffe
+      issuer: "https://spire.example.org"
+      jwksUri: "https://spire.example.org/.well-known/jwks.json"
+      subject: "spiffe://example.org/ns/finance/sa/invoice-reader"
+      audience: "oap-server"
+    - type: wimse
+      issuer: "https://identity.example.org/workloads"
+      jwksUri: "https://identity.example.org/workloads/jwks.json"
+      subject: "wimse://example.org/service/invoice-reader"
+      audience: "oap-server"
 ```
 
 ### Step 2: Configure the OAP server with an issuer

@@ -1,0 +1,25 @@
+{
+  "principal": {
+    "type": "OAP::Agent",
+    "id": "agent://support/ticket-assistant"
+  },
+  "action": {
+    "type": "OAP::Action",
+    "id": "ticket.read"
+  },
+  "resource": {
+    "type": "OAP::support.ticket",
+    "id": "T-100"
+  },
+  "context": {
+    "actor": {
+      "type": "user",
+      "id": "alice@example.com"
+    },
+    "agent_risk_tier": "medium",
+    "agent_type": "chat_agent",
+    "agent_capabilities": ["ticket.read", "customer.bulk_export"]
+  },
+  "policyStoreId": "ps-example"
+}
+

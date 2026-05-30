@@ -25,18 +25,44 @@ WITH identity binding:
 
 ---
 
+## Workload identity profile
+
+OAP separates the logical agent identity from the runtime workload identity:
+
+| Identity | Example | Purpose |
+|---|---|---|
+| Logical OAP ID | `agent://finance/invoice-reader` | Stable policy subject used in OAP decisions. |
+| Workload identity | `spiffe://example.org/ns/finance/sa/invoice-reader` | Standards-compatible identity presented by the deployed workload. |
+
+Use `spec.workloadIdentity` to record the workload identity profile. Prefer a
+SPIFFE ID when the runtime can provide one; otherwise use another stable
+WIMSE-compatible URI.
+
+```yaml
+spec:
+  workloadIdentity:
+    id: spiffe://example.org/ns/finance/sa/invoice-reader
+    type: spiffe
+    trustDomain: example.org
+    attestationLevel: platform
+```
+
 ## Identity bindings
 
 An identity binding maps a **verifiable runtime credential** to a logical agent.
 You declare bindings in the agent manifest:
 
 ```yaml
-apiVersion: oap/v1alpha1
+apiVersion: oap.dev/v1alpha1
 kind: Agent
 metadata:
   name: invoice-reader
   namespace: finance
 spec:
+  workloadIdentity:
+    id: spiffe://example.org/ns/finance/sa/invoice-reader
+    type: spiffe
+    trustDomain: example.org
   identityBindings:
     - type: oidc_client
       provider: keycloak
@@ -51,8 +77,9 @@ spec:
 | `type` | Yes | Identity mechanism (see supported types below) |
 | `provider` | No | Human-readable provider name (e.g., "keycloak", "okta") |
 | `issuer` | Yes | Expected `iss` claim in the token (must be an HTTPS URL) |
+| `jwksUri` | No | Explicit JWKS or SPIFFE bundle endpoint when OIDC discovery is not available |
 | `subject` | Yes | Expected identity: matched against `sub`, `azp`, or `client_id` claims |
-| `audience` | No | Expected `aud` claim (if your IdP uses audience restrictions) |
+| `audience` | No | Expected `aud` claim. For WIMSE, this is an accepted WPT audience or deployment alias. |
 
 ### Supported identity binding types
 
@@ -60,7 +87,8 @@ spec:
 |---|---|---|---|
 | **OIDC Client Credentials** | `oidc_client` | Agent workload gets a JWT via OAuth2 `client_credentials` grant. OAP verifies the JWT's signature (JWKS), issuer, and subject/client_id. | Keycloak, Okta, Azure AD, Auth0, Google, Cognito, PingIdentity, any OIDC provider |
 | **Kubernetes Service Account** | `kubernetes_service_account` | K8s 1.21+ projects OIDC-compatible JWTs for ServiceAccounts. OAP verifies via the cluster's OIDC JWKS endpoint. | Kubernetes projected volume token |
-| **SPIFFE JWT-SVID** | `spiffe` | SPIRE agent provides JWT SVIDs for workloads. OAP verifies against SPIRE's JWT trust bundle endpoint. | SPIFFE workload API |
+| **SPIFFE JWT-SVID** | `spiffe` | SPIRE agent provides JWT SVIDs for workloads. OAP verifies the JWT, requires an audience, and only uses `jwt-svid` signing keys from the bundle. | SPIFFE workload API |
+| **WIMSE WIT + WPT** | `wimse` | OAP verifies the WIT against the issuer, extracts `cnf.jwk`, verifies the request-bound Workload Proof Token, checks `wth`/`aud`/`exp`/`jti`, and rejects replay within the WPT window. | WIMSE-style identity services |
 
 ### Subject matching rules
 
@@ -81,6 +109,12 @@ subject: "client_id:support-agent"
 
 # Kubernetes ServiceAccount format
 subject: "system:serviceaccount:agents:invoice-reader"
+
+# SPIFFE JWT-SVID format; the binding subject must equal the token sub
+subject: "spiffe://example.org/ns/finance/sa/invoice-reader"
+
+# WIMSE workload identifier format; WIMSE sessions also require a WPT
+subject: "wimse://trust.example.com/service/payment"
 ```
 
 ---
@@ -105,7 +139,8 @@ subject: "system:serviceaccount:agents:invoice-reader"
 | **Kubernetes** | `kubernetes_service_account` | `https://kubernetes.default.svc` (or custom) | `system:serviceaccount:{ns}:{name}` |
 | **GCP Workload Identity** | `oidc_client` | `https://accounts.google.com` | Service account email |
 | **AWS IAM Roles** | `oidc_client` | OIDC provider URL configured in IAM | Role session name |
-| **SPIFFE / SPIRE** | `spiffe` | SPIRE bundle endpoint URL | SPIFFE ID (e.g., `spiffe://domain/agent/invoice-reader`) |
+| **SPIFFE / SPIRE** | `spiffe` | SPIRE OIDC Discovery Provider issuer or explicit `jwksUri` | SPIFFE ID (e.g., `spiffe://domain/agent/invoice-reader`) |
+| **WIMSE identity server** | `wimse` | HTTPS issuer and explicit `jwksUri` when discovery is unavailable | Workload identifier (e.g., `wimse://trust.example.com/service/payment`) |
 
 ### Deferred (not yet implemented)
 
@@ -141,6 +176,14 @@ spec:
     - type: kubernetes_service_account
       issuer: "https://kubernetes.default.svc"
       subject: "system:serviceaccount:finance:invoice-reader"
+
+    # SPIFFE JWT-SVID
+    - type: spiffe
+      provider: spire
+      issuer: "https://spire.company.com"
+      jwksUri: "https://spire.company.com/.well-known/jwks.json"
+      subject: "spiffe://company.com/ns/finance/sa/invoice-reader"
+      audience: "oap-server"
 ```
 
 OAP tries each binding in order. The first one that matches the presented token succeeds.
@@ -206,6 +249,7 @@ Content-Type: application/json
 {
   "agent_id": "agent://finance/invoice-reader",
   "runtime_token": "eyJhbGciOiJSUzI1NiIs...",
+  "workload_proof_token": "eyJhbGciOiJFUzI1NiIs...",
   "instance": {
     "environment": "production",
     "host": "invoice-reader-7b4d8f-xyz",
@@ -246,6 +290,20 @@ session = client.create_session(
 # client.session_token is now set automatically
 # All subsequent calls use Bearer ags_...
 ```
+
+For WIMSE, the `runtime_token` is the Workload Identity Token and
+`workload_proof_token` is the Workload Proof Token:
+
+```python
+session = client.create_session(
+    agent_id="agent://payments/payment-agent",
+    runtime_token=wit,
+    workload_proof_token=wpt,
+)
+```
+
+WIMSE-native clients may also send `Workload-Identity-Token` and
+`Workload-Proof-Token` headers to `POST /v1/runtime/session`.
 
 ---
 
@@ -570,6 +628,23 @@ identityBindings:
     subject: "invoice-reader@myproject.iam.gserviceaccount.com"
 ```
 
+### WIMSE
+
+```yaml
+identityBindings:
+  - type: wimse
+    provider: wimse-idp
+    issuer: "https://identity.company.com/workloads"
+    jwksUri: "https://identity.company.com/workloads/jwks.json"
+    subject: "wimse://company.com/service/payment-agent"
+    audience: "oap-server"
+```
+
+At session creation, OAP verifies the WIT signature and subject, extracts
+`cnf.jwk`, verifies the WPT with that key, checks the WPT `wth` hash against the
+WIT, validates the WPT audience, and rejects repeated `jti` values in the WPT
+validity window.
+
 ---
 
 ## Security properties
@@ -577,7 +652,7 @@ identityBindings:
 | Property | How OAP enforces it |
 |---|---|
 | **No impersonation** | JWT signature verified against IdP's public keys (JWKS) |
-| **No replay** | Tokens have expiration; grant tokens have unique decision IDs |
+| **No replay** | Tokens have expiration; WIMSE WPT `jti` values are replay-checked in-process; grant tokens have unique decision IDs |
 | **No escalation** | session binds to one agent; grant binds to one action+resource |
 | **Fail-closed** | Missing token, invalid signature, expired token → deny |
 | **Audit trail** | Every session creation, authorization, and grant validation logged |
@@ -587,6 +662,7 @@ identityBindings:
 
 ## Next steps
 
+- [Authentication Protocols](authentication-protocols.md) — Protocol-by-protocol setup guides
 - [Getting Started](getting-started.md) — Install and first integration
 - [Writing Policies](writing-policies.md) — Policy authoring guide
 - [Integration Guide](integration.md) — SDK, gateway, proxy, middleware

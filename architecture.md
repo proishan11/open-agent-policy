@@ -154,6 +154,9 @@ OAP Control Plane
 | POST /v1/delegations | Manage actor-to-agent delegations |
 | GET /v1/audit | Query audit events |
 | GET /v1/bundles | Download policy bundles for embedded evaluators |
+| GET /v1/health | Process liveness |
+| GET /v1/ready | Dependency readiness |
+| GET /metrics | Prometheus text metrics |
 
 ### 5.3 Data plane: enforcement points
 

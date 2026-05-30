@@ -1,0 +1,31 @@
+{
+  "agent": {
+    "metadata": {
+      "name": "ticket-assistant",
+      "namespace": "support"
+    },
+    "spec": {
+      "riskTier": "medium",
+      "type": "chat_agent",
+      "capabilities": ["ticket.read", "customer.bulk_export"]
+    }
+  },
+  "request": {
+    "subject": {
+      "type": "agent",
+      "agent_id": "agent://support/ticket-assistant"
+    },
+    "actor": {
+      "type": "user",
+      "id": "alice@example.com"
+    },
+    "action": {
+      "name": "customer.bulk_export"
+    },
+    "resource": {
+      "type": "crm.customer"
+    }
+  },
+  "policies": []
+}
+

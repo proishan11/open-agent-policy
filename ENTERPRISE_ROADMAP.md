@@ -2,7 +2,39 @@
 
 > From prototype to production-grade zero-trust agent policy engine.
 
-Milestones 1–5 established the core engine, SDK, proxy, gateway, and foundational security. This roadmap transforms OAP from a well-tested prototype into an enterprise-ready platform that organizations can deploy with confidence.
+Milestones 1-5 established the core engine, SDK, proxy, gateway, and foundational security. Milestone 6 added real OIDC, a Store interface, Postgres support, and pluggable policy backend adapters. The 2026-05-30 foundation baseline tightened the policy contract so unsupported policy intent fails closed and the server can select OPA or Cedar for rule evaluation.
+
+This roadmap transforms OAP from a well-tested prototype into an enterprise-ready platform that organizations can deploy with confidence.
+
+## Foundation Baseline Status
+
+The current baseline is documented in `docs/guide/foundation-baseline.md`.
+Enterprise feature tracks are specified in `docs/specs/enterprise-readiness-spec.md`.
+
+What is now solid:
+
+- Spec-driven v1alpha1 schemas and OpenAPI are the source of truth.
+- Built-in evaluator passes conformance and security tests.
+- Conditions, constraints, obligations, resource selectors, and capabilities are enforced fail-closed.
+- Policy manifests use camelCase keys, while decisions use snake_case fields for SDKs and enforcement points.
+- File loading and HTTP request decoding reject unknown typed fields.
+- Scoped grants include constraints and honor policy-derived expiry.
+- The server binary can run with memory or Postgres storage.
+- The server binary can select built-in, OPA, or Cedar rule-evaluation backends.
+- Docker Compose validation covers the OPA backend with a real sidecar, grants,
+  resource API enforcement, audit query, and fail-closed outage behavior.
+- In Postgres mode, audit events are durable and queryable through `GET /v1/audit`.
+- The server exposes separate liveness (`/v1/health`), readiness (`/v1/ready`), and Prometheus metrics (`/metrics`) endpoints.
+- The Agent spec now supports first-class workload identity profiles and identity bindings for OIDC, Kubernetes ServiceAccount JWTs, and SPIFFE JWT-SVIDs.
+
+What is still not enterprise-grade:
+
+- Postgres is wired into the server path, but operational database maturity still needs online migration discipline, backup/restore, HA, and runbooks.
+- Cedar server mode exists, but Docker Compose e2e coverage and external-backend operational runbooks still need to be added.
+- Basic audit query and process metrics exist, but retention, immutable export, SIEM/OTEL integration, alerting, dashboards, and compliance workflows are not complete.
+- Approval decisions exist, but the full approval request lifecycle is not production-grade.
+- Business-specific resource attribute conditions need spec, conformance, evaluator, and enforcement work.
+- Multi-tenancy, OAP admin RBAC, GitOps policy workflow, HA, distributed tracing, dashboards, alerts, and runbooks remain roadmap items.
 
 ---
 
@@ -10,14 +42,14 @@ Milestones 1–5 established the core engine, SDK, proxy, gateway, and foundatio
 
 | Gap | Current State | Enterprise Requirement |
 |---|---|---|
-| **Identity** | JWT structure validation only | Real OIDC/SAML against Keycloak, Okta, Azure AD, Google |
-| **Storage** | In-memory + YAML files | Postgres, Redis cache, Git-synced policy bundles |
-| **Frameworks** | LangChain only | OpenAI Agents SDK, CrewAI, AutoGen, LlamaIndex, Semantic Kernel |
-| **Observability** | JSONL file sink | OpenTelemetry, Datadog, Splunk, Elastic |
-| **Multi-tenancy** | Single-tenant | Tenant isolation, RBAC for OAP itself |
-| **HA / Scale** | Single instance | Horizontal scaling, leader election, health clustering |
-| **Policy management** | File-based | GitOps sync, versioning, rollback, diff, dry-run |
-| **Real-world validation** | Unit/integration tests | End-to-end with a real LangChain agent hitting real APIs |
+| **Identity** | Real OIDC verifier, identity bindings, SPIFFE JWT-SVID, and WIMSE WIT+WPT proof-of-possession exist | SAML, SPIFFE X.509, shared WIMSE replay cache, mTLS, provider hardening, admin auth policy |
+| **Storage** | Store interface, memory/Postgres server selection, versioned Postgres migrations, Postgres audit persistence, and readiness checks exist | Backup/restore, online migration runbooks, optional Redis/Git |
+| **Frameworks** | Python SDK, LangChain, MCP proxy, HTTP gateway | OpenAI Agents SDK, CrewAI, AutoGen, LlamaIndex, Semantic Kernel, TypeScript SDK |
+| **Observability** | JSONL/stdout/memory/Postgres audit sinks, basic audit query, and Prometheus text counters | OpenTelemetry tracing, dashboards, alerts, Datadog, Splunk, Elastic, CloudWatch |
+| **Multi-tenancy** | Namespace-scoped model only | Tenant isolation, RBAC for OAP itself, quotas and rate limits |
+| **HA / Scale** | Single instance default | Horizontal scaling, cache strategy, graceful degradation, operational SLOs |
+| **Policy management** | File loading and API apply | GitOps sync, versioning, rollback, diff, dry-run, approvals for policy changes |
+| **Real-world validation** | Conformance, unit, security, and e2e tests | Production-realistic agent hitting protected APIs with full audit and approval lifecycle |
 
 ---
 
@@ -62,7 +94,8 @@ Milestones 1–5 established the core engine, SDK, proxy, gateway, and foundatio
 | **Descope** | OIDC | Passwordless-first, flow builder, custom JWT claims |
 | **FusionAuth** | OIDC | Self-hosted or cloud, application-scoped tokens, webhook events |
 | **Ory (Hydra + Kratos)** | OIDC | Open-source, cloud-native, consent management |
-| **SPIFFE / SPIRE** | X.509 SVID | Workload identity (not user identity), mesh-native agent verification |
+| **SPIFFE / SPIRE** | JWT-SVID baseline, X.509 SVID planned | Workload identity (not user identity), mesh-native agent verification |
+| **WIMSE identity server** | WIT+WPT baseline | Draft workload identity token, proof token, and identifier alignment |
 | **Kubernetes** | TokenReview | ServiceAccount tokens, bound tokens, projected volumes |
 | **Cloud Workload Identity** | OIDC federation | GCP Workload Identity, AWS IAM Roles for Service Accounts, Azure Managed Identity |
 
@@ -214,9 +247,9 @@ Milestones 1–5 established the core engine, SDK, proxy, gateway, and foundatio
   - Elastic (via OTLP or Filebeat)
   - CloudWatch (AWS)
 - Structured logging (slog with JSON output)
-- Prometheus metrics endpoint (`/metrics`)
+- Metrics hardening for the baseline `/metrics` endpoint: histogram buckets, scrape examples, alert rules, and dashboard-ready labels
 - Grafana dashboard template
-- Audit event search API (`GET /v1/audit?agent=...&action=...&from=...&to=...`)
+- Audit query hardening beyond the baseline API: retention, export cursors, integrity checks, saved searches, and compliance views
 
 ---
 
@@ -258,8 +291,8 @@ User → Chat UI → LangChain Agent (with @protect)
                      │
                      ├── read_ticket (allowed, constrained: max 10 results)
                      ├── read_customer (allowed, redact: SSN, credit card)
-                     ├── send_email (require_approval for external recipients)
-                     ├── escalate_ticket (allowed for P1/P2 only)
+                     ├── send_email (require_approval)
+                     ├── escalate_ticket (allowed; ticket API enforces priority checks)
                      └── delete_ticket (denied — explicit deny rule)
                      │
                      └── OAP Server (Postgres + Redis + Keycloak)

@@ -1,0 +1,13 @@
+{
+  "decision": "Allow",
+  "diagnostics": {
+    "reason": ["support agent may read tickets"]
+  },
+  "context": {
+    "constraints": {
+      "readonly": true,
+      "max_records": 25
+    }
+  }
+}
+

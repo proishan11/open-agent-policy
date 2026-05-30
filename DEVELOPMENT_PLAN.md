@@ -452,6 +452,7 @@ Resource API → POST /v1/grants/validate {grant_token} → verified claims
 
 | Item | Description | When |
 |---|---|---|
+| Shared WIMSE replay cache | Replace process-local WPT `jti` cache with durable/shared replay protection | Before horizontal-scale WIMSE GA |
 | mTLS verifier | Extract client cert, match CN/SAN against binding subject | When mutual TLS is needed |
 | SPIFFE X.509-SVID | Validate X.509 SVID against SPIFFE trust bundle | When X.509 workload identity is needed |
 | Signed deployment metadata | Custom attestation format verification | When supply-chain attestation is needed |
@@ -468,13 +469,13 @@ Resource API → POST /v1/grants/validate {grant_token} → verified claims
 
 | Area | Status | What's Done | What's Needed | Milestone |
 |---|---|---|---|---|
-| **Identity** | ✅ Done | Real OIDC (Keycloak), identity bindings, sessions | mTLS, X.509 SPIFFE (deferred) | M6 |
-| **Storage** | ✅ Done | Postgres + memory + pluggable Store interface | Redis cache (optional), Git-backed policies | M6 |
+| **Identity** | 🟡 Partial | Real OIDC (Keycloak), identity bindings, sessions, SPIFFE JWT-SVID, WIMSE WIT+WPT proof-of-possession | Shared WIMSE replay cache, mTLS, X.509 SPIFFE | M6/M11 |
+| **Storage** | 🟡 Partial | Postgres + memory + pluggable Store interface + server backend selection + versioned migrations | Backup/restore, online migration runbooks, Redis cache (optional), Git-backed policies, HA operations | M6/M11 |
 | **Policy Engine** | ✅ Done | Built-in evaluator + OPA + Cedar backends | — | M6 |
 | **Auth & Grants** | ✅ Done | Session tokens, scoped grants, run tracking | — | Phase 1-2 |
 | **Enforcement** | ✅ Done | Gateway, MCP proxy (dual mode), grant middleware | — | Phase 3 |
 | **Framework Integrations** | 🟡 Partial | LangChain + MCP proxy | OpenAI Agents, CrewAI, AutoGen, LlamaIndex, Semantic Kernel | **M7** |
-| **Observability** | ❌ Not started | JSONL audit sink only | OpenTelemetry, SIEM (Datadog/Splunk/Elastic), Prometheus metrics | **M8** |
+| **Observability** | 🟡 Partial | JSONL/stdout/Postgres audit sinks, basic audit query, Prometheus text counters | OpenTelemetry, SIEM (Datadog/Splunk/Elastic), dashboards, alerts | **M8** |
 | **Multi-tenancy & RBAC** | ❌ Not started | Single-tenant, namespace-based | Tenant isolation, RBAC for OAP, rate limiting, GitOps policy sync | **M9** |
 | **Real-world Validation** | 🟡 Partial | 70 e2e tests, enterprise-support-agent example | Full agent → real API e2e | **M10** |
 | **Hardening & Scale** | ❌ Not started | Single instance, basic tests | Load testing, circuit breakers, HA, compliance mapping | **M11** |
@@ -594,6 +595,42 @@ For each milestone:
 - README updated with current capabilities
 - Documentation gate passed (see §8)
 ```
+
+### Foundation baseline gate
+
+Before moving a policy feature from idea to implementation, the feature must pass the foundation baseline documented in `docs/guide/foundation-baseline.md`.
+
+The baseline gate is:
+
+```text
+1. Spec updated first (JSON Schema and OpenAPI where applicable)
+2. Conformance cases added (positive and negative)
+3. Implementation follows the spec exactly
+4. Unsupported or malformed policy vocabulary fails closed
+5. Examples use only enforceable policy keys
+6. Docs explain policy keys, decision keys, and enforcement responsibility
+7. Validation passes:
+   - go test ./...
+   - python3 demos/demo-01-spec-and-conformance/validate.py
+   - git diff --check
+```
+
+The current validated foundation baseline is dated 2026-05-30. It includes:
+
+- Closed policy vocabulary for conditions, constraints, and obligations
+- Capability checks as an upper bound before policy authorization
+- Resource selector enforcement
+- Policy camelCase keys and decision snake_case fields
+- Strict YAML/JSON manifest loading
+- Strict HTTP request decoding for API writes
+- Grant TTL derived from `expiresIn`
+- Server storage backend selection for memory/Postgres
+- Durable Postgres audit persistence and basic `GET /v1/audit` filtering
+- Versioned Postgres migrations with advisory locking and checksum metadata
+- Liveness, dependency readiness, and baseline Prometheus metrics endpoints
+- Agent workload identity profile and strict identity binding schema support for OIDC, Kubernetes, SPIFFE JWT-SVID, and WIMSE WIT+WPT proof-of-possession
+
+New policy keys must not appear in examples before the evaluator can enforce them.
 
 ---
 

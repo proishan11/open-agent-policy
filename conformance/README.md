@@ -34,6 +34,21 @@ Each YAML file in `cases/` defines:
 | 09 | constraint-merging | Strictest constraint wins |
 | 10 | revoked-agent-denied | Revoked agents are always denied |
 
+## Foundation baseline coverage
+
+The conformance suite is the public compatibility contract. The Go unit tests add
+baseline hardening coverage for evaluator behavior that is not yet represented as
+portable conformance cases:
+
+- Agent capabilities are an upper bound on policy grants.
+- Resource selectors must match request resource context.
+- Unsupported condition keys fail closed.
+- Unsupported constraint keys fail closed.
+- `allowedFields` and `expiresIn` are mapped into decision constraints.
+
+Future policy capabilities should be promoted into this suite once their request
+and expected-decision shape is stable.
+
 ## Running conformance tests
 
 ```bash

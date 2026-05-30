@@ -9,7 +9,7 @@ This guide covers everything you need to know about authoring policies for Open 
 Every OAP policy is a YAML document with this structure:
 
 ```yaml
-apiVersion: oap/v1alpha1
+apiVersion: oap.dev/v1alpha1
 kind: AgentPolicy
 metadata:
   name: my-policy-name       # Unique name
@@ -59,9 +59,9 @@ rules:
     actions:
       - customer.read
     constraints:
-      max_records: 25
+      maxRecords: 25
       readonly: true
-      redact_fields:
+      redact:
         - ssn
         - credit_card
         - bank_account
@@ -92,7 +92,7 @@ rules:
     approval:
       approvers:
         - "group:support-leads"
-      expires_in_seconds: 300
+      expiresIn: 5m
     reason: "External emails require manager approval"
 ```
 
@@ -104,30 +104,80 @@ Constraints narrow what an agent can do within an allowed action. They are enfor
 
 | Constraint | Type | Description |
 |---|---|---|
-| `max_records` | Integer | Maximum number of records to return |
+| `maxRecords` | Integer | Maximum number of records to return |
 | `readonly` | Boolean | If true, only read operations allowed |
-| `redact_fields` | String[] | Fields to redact from responses |
-| `time_window_seconds` | Integer | Action only valid within this time window |
-| `allowed_fields` | String[] | Only these fields can be modified (custom) |
+| `redact` | String[] | Fields to redact from responses |
+| `timeWindowSeconds` | Integer | Action only valid within this time window |
+| `allowedFields` | String[] | Only these fields can be modified |
+| `expiresIn` | Duration | Grant lifetime, such as `5m` or `1h` |
 
-### Custom constraints
+### Unsupported constraints
 
-You can add any key-value pairs to constraints. OAP passes them through to the SDK:
+OAP rejects unknown constraint keys during evaluation. This is intentional: silently ignoring a constraint would turn a narrow allow into a broad allow.
 
 ```yaml
 constraints:
-  max_records: 10
-  allowed_regions: ["us-east-1", "eu-west-1"]   # custom
-  require_encryption: true                        # custom
+  max_records: 10  # invalid policy key; use maxRecords
 ```
 
-In your code:
+Decision JSON still uses API-style names such as `max_records`, `redact_fields`, and `allowed_fields`.
 
-```python
-if decision.is_allowed:
-    regions = decision.constraints.get("allowed_regions", [])
-    encrypted = decision.constraints.get("require_encryption", False)
+---
+
+## Conditions
+
+Conditions are boolean prerequisites for a rule. If a known condition is not met, the rule does not match. If a condition key is unknown or malformed, evaluation fails closed.
+
+| Condition | Type | Description |
+|---|---|---|
+| `actorRequired` | Boolean | Requires an actor in the authorization request. |
+| `actorType` | String | Requires actor type `user`, `service`, or `agent`. |
+| `actorId` | String | Requires a specific actor ID. |
+| `actorGroups` | String[] | Requires membership in at least one listed group. |
+| `environment` | String | Requires `development`, `staging`, or `production`. |
+| `minAuthStrength` | String | Requires `none`, `password`, `mfa`, or `phishing_resistant_mfa`. |
+| `timeWindow` | Object | Requires current UTC time/day to match. |
+| `delegationRequired` | Boolean | Requires verified delegation context. |
+
+Example:
+
+```yaml
+conditions:
+  actorRequired: true
+  minAuthStrength: mfa
+  timeWindow:
+    after: "09:00"
+    before: "17:00"
+    daysOfWeek: ["mon", "tue", "wed", "thu", "fri"]
 ```
+
+Do not use business-specific condition keys such as `priorityIn` or `recipientDomain` until they are added to the spec and evaluator.
+
+---
+
+## Resource selectors
+
+Resource selectors narrow a rule to a known resource shape. If a selector is present, the authorization request must include matching resource context.
+
+```yaml
+resources:
+  types:
+    - support.ticket
+  classificationMax: confidential
+  environments:
+    - production
+  owners:
+    - group:support-platform
+```
+
+Supported selectors:
+
+| Selector | Description |
+|---|---|
+| `types` | Resource type must match one of the listed values. |
+| `classificationMax` | Resource classification must not exceed the listed maximum. |
+| `environments` | Resource or request context environment must match. |
+| `owners` | Resource or request context owner must match. |
 
 ---
 
@@ -137,9 +187,10 @@ When multiple policies match the same agent and action, constraints are merged u
 
 | Type | Merge rule | Example |
 |---|---|---|
-| **Integer** (max_records) | Minimum value wins | 50 + 25 → 25 |
+| **Integer** (maxRecords) | Minimum value wins | 50 + 25 → 25 |
 | **Boolean** (readonly) | `true` wins over `false` | true + false → true |
-| **Array** (redact_fields) | Union of all values | [ssn] + [credit_card] → [ssn, credit_card] |
+| **Array** (redact) | Union of all values | [ssn] + [credit_card] → [ssn, credit_card] |
+| **Array** (allowedFields) | Intersection wins | [status, priority] + [status] → [status] |
 
 ---
 
@@ -148,7 +199,7 @@ When multiple policies match the same agent and action, constraints are merged u
 Agents must be registered before they can be authorized. An unregistered agent is always denied.
 
 ```yaml
-apiVersion: oap/v1alpha1
+apiVersion: oap.dev/v1alpha1
 kind: Agent
 metadata:
   name: ticket-assistant
@@ -159,7 +210,8 @@ spec:
   riskTier: medium                     # low, medium, high, critical
   description: "Support ticket agent"
 
-  # Actions this agent claims it can do (informational, not enforcement)
+  # Actions this agent claims it can do. Capabilities are an upper bound
+  # on what policies may authorize.
   capabilities:
     - ticket.read
     - ticket.update
@@ -172,10 +224,14 @@ spec:
       provider: keycloak
       issuer: "https://auth.company.com/realms/agents"
       subject: "ticket-assistant-client"
+    - type: spiffe
+      provider: spire
+      issuer: "https://spire.example.org"
+      jwksUri: "https://spire.example.org/.well-known/jwks.json"
+      subject: "spiffe://example.org/ns/support/sa/ticket-assistant"
+      audience: "oap-server"
 
-  runtime:
-    framework: langchain
-    language: python
+  framework: langchain
 ```
 
 ### Agent states
@@ -199,9 +255,9 @@ rules:
       - customer.read
       - customer.list
     constraints:
-      max_records: 50
+      maxRecords: 50
       readonly: true
-      redact_fields:
+      redact:
         - ssn
         - credit_card
         - bank_account
@@ -230,7 +286,7 @@ rules:
     actions:
       - ticket.update
     constraints:
-      allowed_fields:
+      allowedFields:
         - status
         - priority
 
@@ -259,7 +315,7 @@ rules:
     reason: "Agent locked down pending security review"
 ```
 
-> Note: OAP doesn't support wildcards natively — list all actions to deny, or simply don't add any allow rules. An agent with no matching allow rules is denied by default.
+> Note: OAP supports exact action names, `*`, and prefix wildcards such as `ticket.*`. Use broad wildcards cautiously; an agent with no matching allow rules is denied by default.
 
 ### Multiple agents sharing a policy
 
@@ -280,14 +336,17 @@ Create separate policy files for different agents. OAP evaluates all matching po
 
 OAP evaluates policies in this order:
 
-1. **Agent registered?** — No → deny
-2. **Agent active?** — No → deny
-3. **Find matching policies** — by agent URI
-4. **Scan all rules** (across all matching policies):
-   - Any **deny** match → deny (overrides everything)
-   - Any **require_approval** match → require_approval
-   - Any **allow** match → allow (with merged constraints)
-5. **No allow match** → deny by default
+1. **Agent registered?** - No means deny
+2. **Agent active?** - Suspended or revoked means deny
+3. **Capability declared?** - Policies cannot grant actions outside agent capabilities
+4. **Matching policies found?** - by agent URI, type, namespace, or all-agents
+5. **Delegation scope valid?** - if delegation context is present
+6. **Rule matches?** - action, resource selector, and supported conditions
+7. **Policy rule valid?** - unsupported conditions, constraints, or obligations fail closed
+8. **Deny rules first** - any deny match wins
+9. **Require approval next** - approval beats allow
+10. **Allow last** - matching allow rules merge constraints
+11. **No allow match** - deny by default
 
 **Key principle: deny always wins.** If any rule in any policy denies an action, that action is denied regardless of other allow rules.
 
@@ -320,8 +379,7 @@ bin/oap-server --data policies/
 ```bash
 bin/oapctl simulate \
   --data policies/ \
-  --agent "agent://support/ticket-assistant" \
-  --action "ticket.read"
+  -f requests/ticket-read.json
 ```
 
 ### Explain a decision step-by-step
@@ -329,8 +387,7 @@ bin/oapctl simulate \
 ```bash
 bin/oapctl explain \
   --data policies/ \
-  --agent "agent://support/ticket-assistant" \
-  --action "customer.delete"
+  -f requests/customer-delete.json
 ```
 
 ### Run conformance tests
@@ -343,6 +400,7 @@ bin/oapctl test --conformance
 
 ## Next steps
 
+- [Policy Backends](policy-backends.md) — Built-in policy path plus OPA and Cedar adapter contracts
 - [Getting Started](getting-started.md) — Setup and first integration
 - [Identity & Sessions](identity-and-sessions.md) — Identity bindings, supported providers, sessions, runs, grant tokens
 - [Integration Guide](integration.md) — SDK, gateway, proxy, and middleware patterns
